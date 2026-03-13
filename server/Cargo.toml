@@ -1,6 +1,21 @@
 [package]
 name = "azor-server"
-version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+version.workspace = true
 
 [dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+utoipa = { version = "5", features = ["axum_extras"] }
+utoipa-scalar = { version = "0.3", features = ["axum"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.6", features = ["trace"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+envy = "0.4"
+surrealdb = { version = "3", features = ["protocol-ws"] }
+thiserror = "2"
+
+[lints]
+workspace = true

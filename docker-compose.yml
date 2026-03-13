@@ -1,0 +1,45 @@
+services:
+  server:
+    build:
+      context: .
+      args:
+        BUILD: ${BUILD:-unknown}
+        PROFILE: ${PROFILE:-release}
+    ports:
+      - ${AZOR_PORT:-7600}:${AZOR_PORT:-7600}
+    env_file:
+      - .env
+    environment:
+      - AZOR_DB_URI=ws://surrealdb:7601
+      - AZOR_DB_USER=${AZOR_DB_USER:-root}
+      - AZOR_DB_PASS=${AZOR_DB_PASS:-root}
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./server
+
+  surrealdb:
+    image: surrealdb/surrealdb:v3
+    user: root
+    command: >
+      start
+      --user ${AZOR_DB_USER:-root}
+      --pass ${AZOR_DB_PASS:-root}
+      --bind 0.0.0.0:7601
+      rocksdb:///data/db
+    restart: unless-stopped
+    ports:
+      - "7601:7601"
+    volumes:
+      - surrealdb-data:/data
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:7601"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  surrealdb-data:

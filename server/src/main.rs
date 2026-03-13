@@ -1,3 +1,94 @@
-fn main() {
-    println!("Hello, world!");
+mod api;
+mod config;
+mod db;
+mod state;
+
+use axum::Router;
+use tokio::signal;
+use tower_http::trace::TraceLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use utoipa::OpenApi;
+use utoipa_scalar::{Scalar, Servable};
+
+use config::Config;
+use state::AppState;
+
+#[derive(OpenApi)]
+#[openapi(
+    paths(api::health::health),
+    components(schemas(api::health::HealthResponse)),
+    tags(
+        (name = "health", description = "Health check endpoints")
+    )
+)]
+struct ApiDoc;
+
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "azor_server=debug,tower_http=debug".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+
+    let config = Config::from_env().expect("Failed to load config from environment");
+    tracing::info!(
+        "Starting azor-server v{} (build: {}, profile: {})",
+        env!("CARGO_PKG_VERSION"),
+        env!("BUILD"),
+        env!("PROFILE")
+    );
+
+    let db = db::connect(&config.db_uri, &config.db_user, &config.db_pass)
+        .await
+        .expect("Failed to connect to database");
+    tracing::info!("Connected to SurrealDB at {}", config.db_uri);
+
+    let state = AppState::new(config.clone(), db);
+
+    let app = Router::new()
+        .nest("/api", api::router())
+        .with_state(state)
+        .merge(Scalar::with_url("/api/docs", ApiDoc::openapi()))
+        .layer(TraceLayer::new_for_http());
+
+    let addr = config.addr();
+    let listener = tokio::net::TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind listener");
+    tracing::info!("Listening on {addr}");
+    tracing::info!("API documentation available at http://{addr}/api/docs");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .expect("Server error");
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        () = ctrl_c => {},
+        () = terminate => {},
+    }
+
+    tracing::info!("Shutdown signal received, starting graceful shutdown");
 }

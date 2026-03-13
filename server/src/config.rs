@@ -1,0 +1,34 @@
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Config {
+    #[serde(default = "default_host")]
+    pub host: IpAddr,
+    #[serde(default = "default_port")]
+    pub port: u16,
+
+    pub db_uri: String,
+    pub db_user: String,
+    pub db_pass: String,
+}
+
+const fn default_host() -> IpAddr {
+    IpAddr::V4(Ipv4Addr::UNSPECIFIED)
+}
+
+const fn default_port() -> u16 {
+    7600
+}
+
+impl Config {
+    pub fn from_env() -> Result<Self, envy::Error> {
+        envy::prefixed("AZOR_").from_env()
+    }
+
+    #[must_use]
+    pub const fn addr(&self) -> SocketAddr {
+        SocketAddr::new(self.host, self.port)
+    }
+}

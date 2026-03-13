@@ -1,7 +1,10 @@
 [package]
 name = "azor-connector"
-version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+version.workspace = true
 
 [dependencies]
 eframe = "0.27"
+
+[lints]
+workspace = true
