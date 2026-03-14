@@ -12,6 +12,15 @@ pub struct Config {
     pub db_uri: String,
     pub db_user: String,
     pub db_pass: String,
+
+    /// Maximum chunk size in tokens for text splitting. Default: 448.
+    #[serde(default = "default_chunk_size")]
+    pub chunk_size: usize,
+
+    /// Voyage AI API key for generating embeddings.
+    // TODO: remove Option
+    #[serde(default)]
+    pub voyage_api_key: Option<String>,
 }
 
 const fn default_host() -> IpAddr {
@@ -20,6 +29,10 @@ const fn default_host() -> IpAddr {
 
 const fn default_port() -> u16 {
     7600
+}
+
+const fn default_chunk_size() -> usize {
+    448
 }
 
 impl Config {

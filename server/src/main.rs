@@ -1,6 +1,7 @@
 mod api;
 mod config;
 mod db;
+mod ingest;
 mod state;
 
 use axum::Router;
@@ -15,10 +16,22 @@ use state::AppState;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(api::health::health),
-    components(schemas(api::health::HealthResponse)),
+    paths(api::health::health, api::uploads::create_upload),
+    components(schemas(
+        api::health::HealthResponse,
+        api::error::ErrorResponse,
+        api::uploads::CreateUploadRequest,
+        api::uploads::UploadType,
+        api::uploads::UploadCreatedEvent,
+        api::uploads::ExtractingEvent,
+        api::uploads::DocumentExtractedEvent,
+        api::uploads::ChunkingEvent,
+        api::uploads::CompletedEvent,
+        api::uploads::ErrorEvent,
+    )),
     tags(
-        (name = "health", description = "Health check endpoints")
+        (name = "health", description = "Health check endpoints"),
+        (name = "uploads", description = "Upload management")
     )
 )]
 struct ApiDoc;
