@@ -21,7 +21,8 @@ use state::AppState;
         api::health::health,
         api::uploads::create_upload,
         api::auth::login,
-        api::auth::me
+        api::auth::me,
+        api::calls::create_call,
     ),
     components(schemas(
         api::health::HealthResponse,
@@ -38,11 +39,21 @@ use state::AppState;
         api::uploads::ChunkingEvent,
         api::uploads::CompletedEvent,
         api::uploads::ErrorEvent,
+        api::calls::CreateCallRequest,
+        api::calls::CallMessage,
+        api::calls::ConversationCreatedEvent,
+        api::calls::MessageAddedEvent,
+        api::calls::RetrievedChunk,
+        api::calls::ChunksRetrievedEvent,
+        api::calls::SuggestionEvent,
+        api::calls::CallCompletedEvent,
+        api::calls::CallErrorEvent,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "auth", description = "Authentication endpoints"),
-        (name = "uploads", description = "Upload management")
+        (name = "uploads", description = "Upload management"),
+        (name = "calls", description = "Call simulation and RAG pipeline")
     ),
     modifiers(&SecurityAddon)
 )]
