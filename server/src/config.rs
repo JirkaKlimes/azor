@@ -23,9 +23,7 @@ pub struct Config {
     pub chunk_size: usize,
 
     /// Voyage AI API key for generating embeddings.
-    // TODO: remove Option
-    #[serde(default)]
-    pub voyage_api_key: Option<String>,
+    pub voyage_api_key: String,
 }
 
 const fn default_host() -> IpAddr {
