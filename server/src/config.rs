@@ -19,6 +19,12 @@ pub struct Config {
 
     /// Voyage AI API key for generating embeddings.
     pub voyage_api_key: String,
+
+    /// OpenRouter API key for LLM inference.
+    pub openrouter_api_key: String,
+
+    /// LLM model identifier (e.g. "anthropic/claude-sonnet-4.5").
+    pub llm_model: String,
 }
 
 const fn default_host() -> IpAddr {
