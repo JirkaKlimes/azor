@@ -6,13 +6,11 @@ use axum::response::IntoResponse;
 use axum::{Router, routing::post};
 use futures::StreamExt;
 use serde::Serialize;
-use surrealdb::Surreal;
-use surrealdb::engine::any::Any;
 use surrealdb::types::RecordId;
 use tokio_stream::wrappers::ReceiverStream;
 
 use crate::ingest;
-use crate::ingest::embed::EMBEDDING_DIM;
+use crate::ingest::embed;
 use crate::state::AppState;
 
 use super::error::ApiError;
@@ -69,6 +67,11 @@ pub struct ChunkingEvent {
     pub document_index: usize,
     pub source_path: String,
     pub chunks_created: usize,
+}
+
+#[derive(Debug, Serialize, utoipa::ToSchema)]
+pub struct EmbeddingEvent {
+    pub total_chunks: usize,
 }
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -155,15 +158,10 @@ pub async fn create_upload(
         file_data.ok_or_else(|| ApiError::BadRequest("missing field: file".into()))?;
 
     // -- Spawn pipeline, stream events via channel -----------------------------
-    let chunk_size = state.config.chunk_size;
-    let db = state.db.clone();
-
     let (tx, rx) = tokio::sync::mpsc::channel::<Event>(64);
 
     tokio::spawn(async move {
-        if let Err(e) =
-            process_upload(tx.clone(), db, name, upload_type, file_data, chunk_size).await
-        {
+        if let Err(e) = process_upload(tx.clone(), state, name, upload_type, file_data).await {
             let _ = tx
                 .send(sse_event(
                     "error",
@@ -187,6 +185,8 @@ pub async fn create_upload(
 enum PipelineError {
     #[error("extraction failed: {0}")]
     Extract(#[from] ingest::ExtractError),
+    #[error("embedding failed: {0}")]
+    Embed(#[from] embed::EmbedError),
     #[error("database error: {0}")]
     Db(#[from] surrealdb::Error),
     #[error("failed to send SSE event")]
@@ -204,21 +204,32 @@ async fn emit(
         .map_err(|_| PipelineError::Send)
 }
 
+/// A chunk with its owning document ID, ready for embedding + persistence.
+struct PendingChunk {
+    doc_id: RecordId,
+    content: String,
+    chunk_index: i64,
+    char_offset: i64,
+    char_length: i64,
+}
+
 /// Run the full ingest pipeline, sending SSE events in real time.
 async fn process_upload(
     tx: tokio::sync::mpsc::Sender<Event>,
-    db: Surreal<Any>,
+    state: AppState,
     name: String,
     upload_type: UploadType,
     file_data: Vec<u8>,
-    chunk_size: usize,
 ) -> Result<(), PipelineError> {
+    let chunk_size = state.config.chunk_size;
+
     // -- Create upload record in DB --------------------------------------------
     let upload_type_str = match upload_type {
         UploadType::NotionExport => "notion_export",
     };
 
-    let mut result = db
+    let mut result = state
+        .db
         .query("CREATE uploads SET name = $name, upload_type = $type, status = 'processing' RETURN id")
         .bind(("name", name.clone()))
         .bind(("type", upload_type_str.to_string()))
@@ -255,9 +266,8 @@ async fn process_upload(
     )
     .await?;
 
-    // -- Process each document: persist + chunk + persist chunks ----------------
-    let zero_embedding: Vec<f64> = vec![0.0; EMBEDDING_DIM];
-    let mut total_chunks: usize = 0;
+    // -- Process each document: persist doc + chunk, collect all chunks ---------
+    let mut all_chunks: Vec<PendingChunk> = Vec::new();
 
     for (i, doc) in documents.iter().enumerate() {
         emit(
@@ -273,7 +283,8 @@ async fn process_upload(
         .await?;
 
         // Persist the document
-        let mut doc_result = db
+        let mut doc_result = state
+            .db
             .query(
                 "CREATE documents SET \
                     upload = $upload, \
@@ -297,29 +308,6 @@ async fn process_upload(
         // Chunk the document
         let chunks = ingest::chunk::split_document(&doc.content, doc.content_type, chunk_size);
 
-        // Persist each chunk with a zero-vector embedding
-        for chunk in &chunks {
-            db.query(
-                "CREATE chunks SET \
-                    document = $document, \
-                    upload = $upload, \
-                    content = $content, \
-                    chunk_index = $chunk_index, \
-                    char_offset = $char_offset, \
-                    char_length = $char_length, \
-                    embedding = $embedding, \
-                    embedding_model = 'none'",
-            )
-            .bind(("document", doc_id.clone()))
-            .bind(("upload", upload_id.clone()))
-            .bind(("content", chunk.content.clone()))
-            .bind(("chunk_index", chunk.chunk_index as i64))
-            .bind(("char_offset", chunk.char_offset as i64))
-            .bind(("char_length", chunk.char_length as i64))
-            .bind(("embedding", zero_embedding.clone()))
-            .await?;
-        }
-
         emit(
             &tx,
             "chunking",
@@ -331,11 +319,56 @@ async fn process_upload(
         )
         .await?;
 
-        total_chunks += chunks.len();
+        for chunk in chunks {
+            all_chunks.push(PendingChunk {
+                doc_id: doc_id.clone(),
+                chunk_index: chunk.chunk_index as i64,
+                char_offset: chunk.char_offset as i64,
+                char_length: chunk.char_length as i64,
+                content: chunk.content,
+            });
+        }
+    }
+
+    // -- Embed all chunks in one batched call -----------------------------------
+    let total_chunks = all_chunks.len();
+
+    emit(&tx, "embedding", &EmbeddingEvent { total_chunks }).await?;
+
+    let texts: Vec<&str> = all_chunks.iter().map(|c| c.content.as_str()).collect();
+    let embeddings = embed::embed_batch(&state, &texts, embed::InputType::Document).await?;
+
+    // -- Persist each chunk with its embedding ----------------------------------
+    for (chunk, embedding) in all_chunks.iter().zip(embeddings) {
+        let embedding_f64: Vec<f64> = embedding.into_iter().map(f64::from).collect();
+        state
+            .db
+            .query(
+                "CREATE chunks SET \
+                    document = $document, \
+                    upload = $upload, \
+                    content = $content, \
+                    chunk_index = $chunk_index, \
+                    char_offset = $char_offset, \
+                    char_length = $char_length, \
+                    embedding = $embedding, \
+                    embedding_model = $model",
+            )
+            .bind(("document", chunk.doc_id.clone()))
+            .bind(("upload", upload_id.clone()))
+            .bind(("content", chunk.content.clone()))
+            .bind(("chunk_index", chunk.chunk_index))
+            .bind(("char_offset", chunk.char_offset))
+            .bind(("char_length", chunk.char_length))
+            .bind(("embedding", embedding_f64))
+            .bind(("model", embed::DEFAULT_MODEL.to_string()))
+            .await?;
     }
 
     // -- Mark upload complete ---------------------------------------------------
-    db.query("UPDATE $upload_id SET status = 'completed', updated_at = time::now()")
+    state
+        .db
+        .query("UPDATE $upload_id SET status = 'completed', updated_at = time::now()")
         .bind(("upload_id", upload_id.clone()))
         .await?;
 
