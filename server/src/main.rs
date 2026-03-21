@@ -9,6 +9,7 @@ use tokio::signal;
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
+use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
 use utoipa_scalar::{Scalar, Servable};
 
 use config::Config;
@@ -16,10 +17,19 @@ use state::AppState;
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(api::health::health, api::uploads::create_upload),
+    paths(
+        api::health::health,
+        api::uploads::create_upload,
+        api::auth::login,
+        api::auth::me
+    ),
     components(schemas(
         api::health::HealthResponse,
         api::error::ErrorResponse,
+        api::auth::LoginRequest,
+        api::auth::AuthTokenResponse,
+        api::auth::MeResponse,
+        api::auth::Claims,
         api::uploads::CreateUploadRequest,
         api::uploads::UploadType,
         api::uploads::UploadCreatedEvent,
@@ -31,10 +41,30 @@ use state::AppState;
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
+        (name = "auth", description = "Authentication endpoints"),
         (name = "uploads", description = "Upload management")
-    )
+    ),
+    modifiers(&SecurityAddon)
 )]
 struct ApiDoc;
+
+struct SecurityAddon;
+
+impl utoipa::Modify for SecurityAddon {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        if let Some(components) = openapi.components.as_mut() {
+            components.add_security_scheme(
+                "bearer_auth",
+                SecurityScheme::Http(
+                    HttpBuilder::new()
+                        .scheme(HttpAuthScheme::Bearer)
+                        .bearer_format("JWT")
+                        .build(),
+                ),
+            );
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {

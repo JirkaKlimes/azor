@@ -13,8 +13,8 @@ pub enum ApiError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
-    #[error("Not found: {0}")]
-    NotFound(String),
+    #[error("Unauthorized: {0}")]
+    Unauthorized(String),
 
     #[error("Internal server error: {0}")]
     Internal(String),
@@ -27,6 +27,7 @@ impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
         let status = match &self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
+            Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
             Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Internal(_) | Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
