@@ -13,6 +13,11 @@ pub struct Config {
     pub db_user: String,
     pub db_pass: String,
 
+    pub jwt_secret: String,
+
+    #[serde(default = "default_jwt_ttl_minutes")]
+    pub jwt_ttl_minutes: u64,
+
     /// Maximum chunk size in tokens for text splitting. Default: 448.
     #[serde(default = "default_chunk_size")]
     pub chunk_size: usize,
@@ -33,6 +38,10 @@ const fn default_port() -> u16 {
 
 const fn default_chunk_size() -> usize {
     448
+}
+
+const fn default_jwt_ttl_minutes() -> u64 {
+    1440 // 24h
 }
 
 impl Config {
