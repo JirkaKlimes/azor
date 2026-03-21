@@ -1,2 +1,5 @@
 /target
 .env
+dashboard/.next
+dashboard/node_modules
+dashboard/out
