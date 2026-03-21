@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use serde::Serialize;
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
@@ -28,7 +28,6 @@ impl IntoResponse for ApiError {
         let status = match &self {
             Self::BadRequest(_) => StatusCode::BAD_REQUEST,
             Self::Unauthorized(_) => StatusCode::UNAUTHORIZED,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
             Self::Internal(_) | Self::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
 
