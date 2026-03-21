@@ -16,7 +16,7 @@ prod:
 migrate name:
     #!/usr/bin/env bash
     set -euo pipefail
-    TMPFILE=$(mktemp --suffix=.surql)
+    TMPFILE=$(mktemp "${TMPDIR:-/tmp}/azor-migration.XXXXXXXX.surql")
     ${EDITOR:-vim} "$TMPFILE"
     if [ -s "$TMPFILE" ]; then
         mv "$TMPFILE" "server/src/db/migrations/$(date +%Y%m%d%H%M%S)_{{name}}.surql"
