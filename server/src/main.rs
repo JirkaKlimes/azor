@@ -22,7 +22,7 @@ use state::AppState;
         api::uploads::create_upload,
         api::auth::login,
         api::auth::me,
-        api::calls::create_call,
+        api::calls::call_websocket,
     ),
     components(schemas(
         api::health::HealthResponse,
@@ -39,9 +39,6 @@ use state::AppState;
         api::uploads::ChunkingEvent,
         api::uploads::CompletedEvent,
         api::uploads::ErrorEvent,
-        api::calls::CreateCallRequest,
-        api::calls::CallMessage,
-        api::calls::CreateCallResponse,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
