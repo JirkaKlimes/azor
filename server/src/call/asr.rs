@@ -18,9 +18,6 @@ type WsStream =
 #[derive(Debug, Clone)]
 pub struct TranscriptWord {
     pub text: String,
-    pub start: Duration,
-    pub end: Duration,
-    pub confidence: f32,
     pub is_final: bool,
 }
 
@@ -34,9 +31,19 @@ pub struct SonioxSession {
     write: Arc<Mutex<futures::stream::SplitSink<WsStream, Message>>>,
 }
 
+/// Buffer for accumulating subword tokens into complete words.
+struct WordBuffer {
+    text: String,
+    end: Duration,
+    min_confidence: f32,
+    all_final: bool,
+}
+
 struct SonioxReader {
     read: futures::stream::SplitStream<WsStream>,
     buffered_events: VecDeque<TranscriptEvent>,
+    /// Buffer for accumulating subword tokens into complete words.
+    word_buffer: Option<WordBuffer>,
 }
 
 impl SonioxSession {
@@ -73,6 +80,7 @@ impl SonioxSession {
         let mut reader = SonioxReader {
             read,
             buffered_events: VecDeque::new(),
+            word_buffer: None,
         };
 
         tokio::spawn(async move {
@@ -91,6 +99,27 @@ impl SonioxSession {
             .send(Message::Binary(pcm.to_vec().into()))
             .await
             .map_err(|e| format!("Failed to send audio: {e}"))
+    }
+
+    /// Flush buffered audio by sending an empty binary frame
+    /// This signals Soniox to finalize processing of all sent audio
+    pub async fn flush(&self) -> Result<(), String> {
+        self.write
+            .lock()
+            .await
+            .send(Message::Binary(Vec::new().into()))
+            .await
+            .map_err(|e| format!("Failed to flush: {e}"))
+    }
+
+    /// Close the WebSocket connection gracefully
+    pub async fn close(&self) -> Result<(), String> {
+        self.write
+            .lock()
+            .await
+            .send(Message::Close(None))
+            .await
+            .map_err(|e| format!("Failed to close: {e}"))
     }
 }
 
@@ -140,25 +169,61 @@ impl SonioxReader {
         for token in resp.tokens {
             if token.text == "<end>" {
                 tracing::trace!("Utterance end");
+                // Flush any buffered word before the utterance end
+                if let Some(word) = self.flush_word_buffer() {
+                    self.buffered_events.push_back(word);
+                }
                 self.buffered_events
                     .push_back(TranscriptEvent::UtteranceEnd);
                 continue;
             }
 
-            let text = token.text.trim();
-            if text.is_empty() {
+            // Check if this is a word boundary (token starts with space)
+            let is_word_boundary =
+                token.text.starts_with(' ') || token.text.starts_with('\u{00A0}');
+
+            // Flush buffer on word boundary
+            if is_word_boundary {
+                if let Some(word) = self.flush_word_buffer() {
+                    self.buffered_events.push_back(word);
+                }
+            }
+
+            // Get trimmed text for this token
+            let trimmed = token.text.trim();
+            if trimmed.is_empty() {
                 continue;
             }
 
-            self.buffered_events
-                .push_back(TranscriptEvent::Word(TranscriptWord {
-                    text: text.to_string(),
-                    start: Duration::from_millis(token.start_ms.unwrap_or(0) as u64),
-                    end: Duration::from_millis(token.end_ms.unwrap_or(0) as u64),
-                    confidence: token.confidence,
-                    is_final: token.is_final,
-                }));
+            let end = Duration::from_millis(token.end_ms.unwrap_or(0) as u64);
+
+            // Accumulate into word buffer
+            if let Some(ref mut buf) = self.word_buffer {
+                buf.text.push_str(trimmed);
+                buf.end = end;
+                buf.min_confidence = buf.min_confidence.min(token.confidence);
+                buf.all_final = buf.all_final && token.is_final;
+            } else {
+                self.word_buffer = Some(WordBuffer {
+                    text: trimmed.to_string(),
+                    end,
+                    min_confidence: token.confidence,
+                    all_final: token.is_final,
+                });
+            }
         }
+    }
+
+    /// Flush the word buffer and return a `TranscriptEvent::Word` if non-empty.
+    fn flush_word_buffer(&mut self) -> Option<TranscriptEvent> {
+        let buf = self.word_buffer.take()?;
+        if buf.text.is_empty() {
+            return None;
+        }
+        Some(TranscriptEvent::Word(TranscriptWord {
+            text: buf.text,
+            is_final: buf.all_final,
+        }))
     }
 }
 
@@ -186,8 +251,6 @@ struct SonioxResponse {
 #[derive(Debug, Deserialize)]
 struct SonioxToken {
     text: String,
-    #[serde(default)]
-    start_ms: Option<i64>,
     #[serde(default)]
     end_ms: Option<i64>,
     #[serde(default)]

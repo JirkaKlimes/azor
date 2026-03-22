@@ -40,7 +40,10 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
     tracing::info!("WebSocket connection established");
 
-    let call = match Call::new(state).await {
+    // TODO: Extract user from JWT auth instead of using hardcoded demo user
+    let demo_user_id = "demo".to_string();
+
+    let call = match Call::new(state, demo_user_id).await {
         Ok(call) => call,
         Err(e) => {
             tracing::error!("Failed to create call: {}", e);
@@ -87,7 +90,12 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
         }
     }
 
-    tracing::info!("WebSocket connection closed");
+    tracing::info!("WebSocket connection closed, flushing final transcripts");
+
+    // Flush any pending audio and wait for final transcripts
+    call.flush().await;
+
+    tracing::info!("Call cleanup complete");
 }
 
 fn parse_audio_packet(data: &[u8]) -> Result<AudioPacket, String> {

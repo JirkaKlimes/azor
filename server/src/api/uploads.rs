@@ -226,7 +226,7 @@ async fn process_upload(
         &tx,
         "upload_created",
         &UploadCreatedEvent {
-            id: crate::api::calls::format_record_id(&upload_id),
+            id: crate::api::call::format_record_id(&upload_id),
             name,
             upload_type,
             status: "processing".into(),
@@ -352,7 +352,7 @@ async fn process_upload(
         &tx,
         "completed",
         &CompletedEvent {
-            id: crate::api::calls::format_record_id(&upload_id),
+            id: crate::api::call::format_record_id(&upload_id),
             status: "completed".into(),
             total_documents: documents.len(),
             total_chunks,

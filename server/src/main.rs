@@ -23,7 +23,7 @@ use state::AppState;
         api::uploads::create_upload,
         api::auth::login,
         api::auth::me,
-        api::calls::call_websocket,
+        api::call::call_websocket,
     ),
     components(schemas(
         api::health::HealthResponse,
