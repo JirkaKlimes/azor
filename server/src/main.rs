@@ -1,4 +1,5 @@
 mod api;
+mod call;
 mod config;
 mod db;
 mod ingest;
@@ -70,6 +71,10 @@ impl utoipa::Modify for SecurityAddon {
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()

@@ -30,6 +30,9 @@ pub struct Config {
 
     /// LLM model identifier (e.g. "anthropic/claude-sonnet-4.5").
     pub llm_model: String,
+
+    /// Soniox API key for speech-to-text.
+    pub soniox_api_key: String,
 }
 
 const fn default_host() -> IpAddr {

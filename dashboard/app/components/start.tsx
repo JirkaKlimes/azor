@@ -9,15 +9,16 @@ import { toast } from "sonner";
 export default function Start() {
   const [on, setOn] = React.useState(false);
   const [replaying, setReplaying] = React.useState(false);
+  const [replayProgress, setReplayProgress] = React.useState(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
 
   const handleReplayFile = async (file: File) => {
     try {
       setReplaying(true);
+      setReplayProgress(0);
 
-      // Connect to WebSocket
-      const wsUrl = `ws://localhost:7600/api/calls/ws`;
+      const wsUrl = `ws://localhost:7600/api/call`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -27,44 +28,40 @@ export default function Start() {
           description: file.name,
         });
 
-        // Read the audio file
         const arrayBuffer = await file.arrayBuffer();
         const audioContext = new AudioContext();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
 
-        // Process 2-channel audio
-        const channel0 = audioBuffer.getChannelData(0); // Mic
+        const channel0 = audioBuffer.getChannelData(0);
         const channel1 = audioBuffer.numberOfChannels > 1
           ? audioBuffer.getChannelData(1)
-          : audioBuffer.getChannelData(0); // Screen capture or fallback
+          : audioBuffer.getChannelData(0);
 
-        // Send audio in chunks (e.g., 1024 samples at a time)
         const chunkSize = 1024;
         const sampleRate = audioBuffer.sampleRate;
-        const duration = audioBuffer.duration;
+        const totalChunks = Math.ceil(channel0.length / chunkSize);
 
         for (let i = 0; i < channel0.length; i += chunkSize) {
           const micChunk = channel0.slice(i, i + chunkSize);
           const screenChunk = channel1.slice(i, i + chunkSize);
 
-          // Send mic audio (channel 0)
-          // Use 4-byte aligned header: [channel_id, 0, 0, 0] + float data
           const micBuffer = new ArrayBuffer(4 + micChunk.length * 4);
           const micView = new DataView(micBuffer);
-          micView.setUint8(0, 0); // Channel ID: mic
+          micView.setUint8(0, 0);
           const micFloats = new Float32Array(micBuffer, 4);
           micFloats.set(micChunk);
           ws.send(micBuffer);
 
-          // Send screen capture audio (channel 1)
           const screenBuffer = new ArrayBuffer(4 + screenChunk.length * 4);
           const screenView = new DataView(screenBuffer);
-          screenView.setUint8(0, 1); // Channel ID: screen capture
+          screenView.setUint8(0, 1);
           const screenFloats = new Float32Array(screenBuffer, 4);
           screenFloats.set(screenChunk);
           ws.send(screenBuffer);
 
-          // Simulate real-time playback timing
+          const progress = Math.round(((i / chunkSize + 1) / totalChunks) * 100);
+          setReplayProgress(progress);
+
           await new Promise(resolve => setTimeout(resolve, (chunkSize / sampleRate) * 1000));
         }
 
@@ -73,6 +70,7 @@ export default function Start() {
         });
         ws.close();
         setReplaying(false);
+        setReplayProgress(0);
       };
 
       ws.onerror = (error) => {
@@ -110,6 +108,7 @@ export default function Start() {
       wsRef.current = null;
     }
     setReplaying(false);
+    setReplayProgress(0);
     toast("Replay stopped", {
       position: "top-center",
     });
@@ -143,7 +142,7 @@ export default function Start() {
           onClick={stopReplay}
         >
           <PauseIcon className="h-4 w-4" />
-          Stop Replay
+          Stop Replay {replayProgress}%
         </Button>
       ) : (
         <>

@@ -26,6 +26,8 @@ schemars = "1"
 documented = "0.9"
 futures = "0.3"
 tokio-stream = "0.1"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", features = ["ring"] }
 jsonwebtoken = "10.3.0"
 
 [lints]
