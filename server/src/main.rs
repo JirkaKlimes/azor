@@ -1,4 +1,5 @@
 mod api;
+mod call;
 mod config;
 mod db;
 mod ingest;
@@ -21,7 +22,8 @@ use state::AppState;
         api::health::health,
         api::uploads::create_upload,
         api::auth::login,
-        api::auth::me
+        api::auth::me,
+        api::call::call_websocket,
     ),
     components(schemas(
         api::health::HealthResponse,
@@ -42,7 +44,8 @@ use state::AppState;
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "auth", description = "Authentication endpoints"),
-        (name = "uploads", description = "Upload management")
+        (name = "uploads", description = "Upload management"),
+        (name = "calls", description = "Call simulation and RAG pipeline")
     ),
     modifiers(&SecurityAddon)
 )]
@@ -68,6 +71,10 @@ impl utoipa::Modify for SecurityAddon {
 
 #[tokio::main]
 async fn main() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()

@@ -1,4 +1,25 @@
 services:
+  dashboard:
+    build:
+      context: ./dashboard
+      target: dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./dashboard:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+    develop:
+      watch:
+        - action: sync
+          path: ./dashboard
+          target: /app
+          ignore:
+            - node_modules/
+            - .next/
+
   server:
     build:
       context: .

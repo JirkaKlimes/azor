@@ -23,9 +23,16 @@ pub struct Config {
     pub chunk_size: usize,
 
     /// Voyage AI API key for generating embeddings.
-    // TODO: remove Option
-    #[serde(default)]
-    pub voyage_api_key: Option<String>,
+    pub voyage_api_key: String,
+
+    /// OpenRouter API key for LLM inference.
+    pub openrouter_api_key: String,
+
+    /// LLM model identifier (e.g. "anthropic/claude-sonnet-4.5").
+    pub llm_model: String,
+
+    /// Soniox API key for speech-to-text.
+    pub soniox_api_key: String,
 }
 
 const fn default_host() -> IpAddr {

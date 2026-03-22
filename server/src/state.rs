@@ -12,6 +12,7 @@ pub struct AppState {
     pub db: Surreal<Any>,
     pub jwt_encoding_key: Arc<EncodingKey>,
     pub jwt_decoding_key: Arc<DecodingKey>,
+    pub http: reqwest::Client,
 }
 
 impl AppState {
@@ -24,6 +25,7 @@ impl AppState {
             db,
             jwt_encoding_key,
             jwt_decoding_key,
+            http: reqwest::Client::new(),
         }
     }
 }
