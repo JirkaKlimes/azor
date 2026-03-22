@@ -1,11 +1,6 @@
 set dotenv-load
 set dotenv-path := ".env"
 
-front:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    (cd dashboard && npm run dev)
-
 dev:
     #!/usr/bin/env bash
     set -euo pipefail
