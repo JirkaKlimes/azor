@@ -1,8 +1,8 @@
 use std::convert::Infallible;
 
 use axum::extract::{Multipart, State};
-use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::{Router, routing::post};
 use futures::StreamExt;
 use serde::Serialize;
@@ -14,10 +14,6 @@ use crate::ingest::embed;
 use crate::state::AppState;
 
 use super::error::ApiError;
-
-// ---------------------------------------------------------------------------
-// OpenAPI schema (for docs only — actual extraction uses Multipart)
-// ---------------------------------------------------------------------------
 
 /// Multipart form fields for creating an upload.
 #[derive(Debug, utoipa::ToSchema)]
@@ -36,10 +32,6 @@ pub struct CreateUploadRequest {
 pub enum UploadType {
     NotionExport,
 }
-
-// ---------------------------------------------------------------------------
-// SSE event payloads
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, Serialize, utoipa::ToSchema)]
 pub struct UploadCreatedEvent {
@@ -87,10 +79,6 @@ pub struct ErrorEvent {
     pub message: String,
 }
 
-// ---------------------------------------------------------------------------
-// Handler
-// ---------------------------------------------------------------------------
-
 #[utoipa::path(
     post,
     path = "/api/uploads",
@@ -117,10 +105,9 @@ pub async fn create_upload(
     {
         match field.name() {
             Some("upload_type") => {
-                let value = field
-                    .text()
-                    .await
-                    .map_err(|e| ApiError::BadRequest(format!("failed to read upload_type: {e}")))?;
+                let value = field.text().await.map_err(|e| {
+                    ApiError::BadRequest(format!("failed to read upload_type: {e}"))
+                })?;
                 upload_type = Some(match value.as_str() {
                     "notion_export" => UploadType::NotionExport,
                     other => {
@@ -154,8 +141,7 @@ pub async fn create_upload(
     let upload_type =
         upload_type.ok_or_else(|| ApiError::BadRequest("missing field: upload_type".into()))?;
     let name = name.ok_or_else(|| ApiError::BadRequest("missing field: name".into()))?;
-    let file_data =
-        file_data.ok_or_else(|| ApiError::BadRequest("missing field: file".into()))?;
+    let file_data = file_data.ok_or_else(|| ApiError::BadRequest("missing field: file".into()))?;
 
     // -- Spawn pipeline, stream events via channel -----------------------------
     let (tx, rx) = tokio::sync::mpsc::channel::<Event>(64);
@@ -176,10 +162,6 @@ pub async fn create_upload(
     let stream = ReceiverStream::new(rx).map(Ok::<_, Infallible>);
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
-
-// ---------------------------------------------------------------------------
-// Pipeline
-// ---------------------------------------------------------------------------
 
 #[derive(Debug, thiserror::Error)]
 enum PipelineError {
@@ -223,14 +205,15 @@ async fn process_upload(
 ) -> Result<(), PipelineError> {
     let chunk_size = state.config.chunk_size;
 
-    // -- Create upload record in DB --------------------------------------------
     let upload_type_str = match upload_type {
         UploadType::NotionExport => "notion_export",
     };
 
     let mut result = state
         .db
-        .query("CREATE uploads SET name = $name, upload_type = $type, status = 'processing' RETURN id")
+        .query(
+            "CREATE uploads SET name = $name, upload_type = $type, status = 'processing' RETURN id",
+        )
         .bind(("name", name.clone()))
         .bind(("type", upload_type_str.to_string()))
         .await?;
@@ -243,7 +226,7 @@ async fn process_upload(
         &tx,
         "upload_created",
         &UploadCreatedEvent {
-            id: format!("{}:{:?}", upload_id.table, upload_id.key),
+            id: crate::api::calls::format_record_id(&upload_id),
             name,
             upload_type,
             status: "processing".into(),
@@ -251,7 +234,6 @@ async fn process_upload(
     )
     .await?;
 
-    // -- Extract documents -----------------------------------------------------
     let documents = match upload_type_str {
         "notion_export" => ingest::notion::extract_from_zip(&file_data)?,
         _ => unreachable!(),
@@ -266,7 +248,6 @@ async fn process_upload(
     )
     .await?;
 
-    // -- Process each document: persist doc + chunk, collect all chunks ---------
     let mut all_chunks: Vec<PendingChunk> = Vec::new();
 
     for (i, doc) in documents.iter().enumerate() {
@@ -282,7 +263,6 @@ async fn process_upload(
         )
         .await?;
 
-        // Persist the document
         let mut doc_result = state
             .db
             .query(
@@ -305,7 +285,6 @@ async fn process_upload(
         let doc_id = doc_id
             .ok_or_else(|| surrealdb::Error::internal("failed to create document record".into()))?;
 
-        // Chunk the document
         let chunks = ingest::chunk::split_document(&doc.content, doc.content_type, chunk_size);
 
         emit(
@@ -330,7 +309,6 @@ async fn process_upload(
         }
     }
 
-    // -- Embed all chunks in one batched call -----------------------------------
     let total_chunks = all_chunks.len();
 
     emit(&tx, "embedding", &EmbeddingEvent { total_chunks }).await?;
@@ -338,7 +316,6 @@ async fn process_upload(
     let texts: Vec<&str> = all_chunks.iter().map(|c| c.content.as_str()).collect();
     let embeddings = embed::embed_batch(&state, &texts, embed::InputType::Document).await?;
 
-    // -- Persist each chunk with its embedding ----------------------------------
     for (chunk, embedding) in all_chunks.iter().zip(embeddings) {
         let embedding_f64: Vec<f64> = embedding.into_iter().map(f64::from).collect();
         state
@@ -365,7 +342,6 @@ async fn process_upload(
             .await?;
     }
 
-    // -- Mark upload complete ---------------------------------------------------
     state
         .db
         .query("UPDATE $upload_id SET status = 'completed', updated_at = time::now()")
@@ -376,7 +352,7 @@ async fn process_upload(
         &tx,
         "completed",
         &CompletedEvent {
-            id: format!("{}:{:?}", upload_id.table, upload_id.key),
+            id: crate::api::calls::format_record_id(&upload_id),
             status: "completed".into(),
             total_documents: documents.len(),
             total_chunks,
@@ -387,10 +363,6 @@ async fn process_upload(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 fn sse_event(event_type: &str, data: &impl Serialize) -> Event {
     Event::default()
         .event(event_type)
@@ -398,7 +370,6 @@ fn sse_event(event_type: &str, data: &impl Serialize) -> Event {
         .expect("failed to serialize SSE event")
 }
 
-/// 500 MB request body limit for uploads.
 const MAX_UPLOAD_SIZE: usize = 500 * 1024 * 1024;
 
 pub fn router() -> Router<AppState> {
