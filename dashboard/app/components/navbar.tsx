@@ -6,7 +6,6 @@ import FavIcon from "../icons/favicon";
 import StartButton, { type StartRef } from "./start";
 import type { ServerEvent, ClientEvent } from "./transcript/types";
 import { Separator } from "@/components/ui/separator";
-import { CommandWithGroups } from "./command";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface NavbarProps {
@@ -33,14 +32,13 @@ const Navbar = forwardRef<NavbarRef, NavbarProps>(function Navbar(
   }));
 
   return (
-    <div className="fixed z-50 left-1/2 bottom-6 -translate-x-1/2">
-      <div className="border rounded-2xl bg-background p-2 gap-2 flex items-center shadow-lg">
+    <div className="fixed z-50 left-1/2 top-4 -translate-x-1/2">
+      <div className="border rounded-2xl bg-background p-2 pr-3 gap-2 flex items-center shadow-lg">
         <div className="font-extrabold text-xl px-1 flex items-center">
           <FavIcon className="w-9 h-9" />
           Azor
         </div>
         <Separator orientation="vertical" className="my-1" />
-        <CommandWithGroups />
         <StartButton
           ref={startRef}
           onConversationId={onConversationId}
