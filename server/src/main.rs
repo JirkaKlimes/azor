@@ -4,10 +4,11 @@ mod config;
 mod db;
 mod ingest;
 mod state;
+mod util;
 
 use axum::Router;
 use tokio::signal;
-use tower_http::trace::TraceLayer;
+use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use utoipa::OpenApi;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
@@ -24,6 +25,7 @@ use state::AppState;
         api::auth::login,
         api::auth::me,
         api::call::call_websocket,
+        api::intelligence::get_document,
     ),
     components(schemas(
         api::health::HealthResponse,
@@ -40,12 +42,14 @@ use state::AppState;
         api::uploads::ChunkingEvent,
         api::uploads::CompletedEvent,
         api::uploads::ErrorEvent,
+        api::intelligence::DocumentResponse,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "auth", description = "Authentication endpoints"),
         (name = "uploads", description = "Upload management"),
-        (name = "calls", description = "Call simulation and RAG pipeline")
+        (name = "calls", description = "Call simulation and RAG pipeline"),
+        (name = "intelligence", description = "Intelligence events and document access")
     ),
     modifiers(&SecurityAddon)
 )]
@@ -102,6 +106,7 @@ async fn main() {
         .nest("/api", api::router())
         .with_state(state)
         .merge(Scalar::with_url("/api/docs", ApiDoc::openapi()))
+        .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());
 
     let addr = config.addr();
