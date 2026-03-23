@@ -1,4 +1,4 @@
-import { Variants } from "framer-motion";
+type Variants = Record<string, Record<string, unknown>>;
 
 // Subtle, professional animation variants for transcript items
 

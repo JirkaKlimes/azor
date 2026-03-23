@@ -1,6 +1,5 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { CheckIcon, CopyIcon, XIcon, LightbulbIcon } from "lucide-react";
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -71,68 +70,46 @@ export default function SuggestionBar({
     onDismiss();
   }, [onDismiss]);
 
-  return (
-    <AnimatePresence>
-      {suggestion && (
-        <motion.div
-          key={suggestionId}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: 10 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-          className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background via-background to-transparent"
-        >
-          <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 backdrop-blur-sm p-3">
-            <div className="flex items-start gap-2">
-              <LightbulbIcon className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-muted-foreground mb-1">
-                  Suggested response
-                </p>
-                <p className="text-sm whitespace-pre-wrap line-clamp-4">
-                  {suggestion}
-                </p>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <motion.div whileTap={{ scale: 0.95 }}>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    onClick={handleCopy}
-                    title="Copy to clipboard"
-                  >
-                    <AnimatePresence mode="wait">
-                      <motion.div
-                        key={copied ? "check" : "copy"}
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0.8, opacity: 0 }}
-                        transition={{ duration: 0.1 }}
-                      >
-                        {copied ? (
-                          <CheckIcon className="h-3.5 w-3.5 text-green-500" />
-                        ) : (
-                          <CopyIcon className="h-3.5 w-3.5" />
-                        )}
-                      </motion.div>
-                    </AnimatePresence>
-                  </Button>
-                </motion.div>
-                <motion.div whileTap={{ scale: 0.95 }}>
-                  <Button
-                    size="icon-xs"
-                    variant="ghost"
-                    onClick={handleDismiss}
-                    title="Dismiss"
-                  >
-                    <XIcon className="h-3.5 w-3.5" />
-                  </Button>
-                </motion.div>
-              </div>
-            </div>
+  return suggestion ? (
+    <div
+      key={suggestionId}
+      className="absolute bottom-0 left-0 right-0 p-3 bg-linear-to-t from-background via-background to-transparent"
+    >
+      <div className="rounded-lg border-2 border-dashed border-primary/40 bg-primary/5 backdrop-blur-sm p-3">
+        <div className="flex items-start gap-2">
+          <LightbulbIcon className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-muted-foreground mb-1">
+              Suggested response
+            </p>
+            <p className="text-sm whitespace-pre-wrap line-clamp-4">
+              {suggestion}
+            </p>
           </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={handleCopy}
+              title="Copy to clipboard"
+            >
+              {copied ? (
+                <CheckIcon className="h-3.5 w-3.5 text-green-500" />
+              ) : (
+                <CopyIcon className="h-3.5 w-3.5" />
+              )}
+            </Button>
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              onClick={handleDismiss}
+              title="Dismiss"
+            >
+              <XIcon className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
 }

@@ -1,10 +1,8 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { ButtonGroup } from "@/components/ui/button-group";
-import { MicIcon, PauseIcon, PlayIcon, UploadIcon } from "lucide-react";
+import { PauseIcon, UploadIcon } from "lucide-react";
 import React, { useImperativeHandle, forwardRef } from "react";
-import { toast } from "sonner";
 import type { ServerEvent, ClientEvent } from "./transcript/types";
 
 interface StartProps {
@@ -19,11 +17,10 @@ export interface StartRef {
 
 const Start = forwardRef<StartRef, StartProps>(function Start(
   { onConversationId, onCallEnd, onEvent },
-  ref
+  ref,
 ) {
-  const [on, setOn] = React.useState(false);
+  // Used by Navbar as a small websocket bridge for replay + outgoing text messages.
   const [replaying, setReplaying] = React.useState(false);
-  const [replayProgress, setReplayProgress] = React.useState(0);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
 
@@ -39,7 +36,6 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
   const handleReplayFile = async (file: File) => {
     try {
       setReplaying(true);
-      setReplayProgress(0);
 
       const ws = new WebSocket("ws://localhost:7600/api/call");
       wsRef.current = ws;
@@ -59,11 +55,6 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
       };
 
       ws.onopen = async () => {
-        toast("Replay started", {
-          position: "top-center",
-          description: file.name,
-        });
-
         const arrayBuffer = await file.arrayBuffer();
         const audioContext = new AudioContext();
         const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
@@ -76,7 +67,6 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
 
         const chunkSize = 1024;
         const sampleRate = audioBuffer.sampleRate;
-        const totalChunks = Math.ceil(channel0.length / chunkSize);
 
         for (let i = 0; i < channel0.length; i += chunkSize) {
           const micChunk = channel0.slice(i, i + chunkSize);
@@ -92,37 +82,25 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
           new Float32Array(screenBuffer, 4).set(screenChunk);
           ws.send(screenBuffer);
 
-          const progress = Math.round(((i / chunkSize + 1) / totalChunks) * 100);
-          setReplayProgress(progress);
-
           await new Promise((resolve) =>
-            setTimeout(resolve, (chunkSize / sampleRate) * 1000)
+            setTimeout(resolve, (chunkSize / sampleRate) * 1000),
           );
         }
 
-        toast("Replay completed", { position: "top-center" });
         ws.close();
-        setReplaying(false);
-        setReplayProgress(0);
       };
 
       ws.onerror = () => {
-        toast.error("Replay failed", {
-          position: "top-center",
-          description: "Could not connect to server",
-        });
         setReplaying(false);
       };
 
       ws.onclose = () => {
         wsRef.current = null;
+        setReplaying(false);
         onCallEnd?.();
       };
     } catch (error) {
-      toast.error("Replay failed", {
-        position: "top-center",
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
+      console.error("Replay failed", error);
       setReplaying(false);
     }
   };
@@ -138,47 +116,27 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
     wsRef.current?.close();
     wsRef.current = null;
     setReplaying(false);
-    setReplayProgress(0);
-    toast("Replay stopped", { position: "top-center" });
   };
 
   return (
     <div className="flex items-center gap-3 text-sm">
-      {on ? (
-        <ButtonGroup className="box-loading-border">
-          <Button variant="destructive" disabled>
-            <MicIcon className="h-4 w-4 text-destructive" />
-            12:32
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              toast("Call ended", {
-                position: "top-center",
-                description: `ID: ${crypto.randomUUID()}`,
-              });
-              setOn(false);
-            }}
-          >
-            <PauseIcon className="h-4 w-4" />
-            Stop
-          </Button>
-        </ButtonGroup>
-      ) : replaying ? (
+      {replaying ? (
         <Button variant="destructive" onClick={stopReplay}>
           <PauseIcon className="h-4 w-4" />
-          Stop Replay {replayProgress}%
+          Stop Replay
         </Button>
       ) : (
         <>
-          <Button variant="outline" onClick={() => setOn(true)}>
-            <PlayIcon className="h-4 w-4" />
-            Record
-          </Button>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
+          {/* Used by Navbar to feed mock websocket events into Home page panels. */}
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+          >
             <UploadIcon className="h-4 w-4" />
             Replay
-            <span className="ml-1.5 text-[10px] text-muted-foreground">(debug)</span>
+            <span className="ml-1.5 text-[10px] text-muted-foreground">
+              (debug)
+            </span>
           </Button>
           <input
             ref={fileInputRef}

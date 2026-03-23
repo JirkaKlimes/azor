@@ -1,22 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import type {
   TranscriptMessage,
   TranscriptHighlight,
   TranscriptSummary,
-  TranscriptSuggestion,
-  TranscriptProcessing,
   ServerEvent,
   ClientEvent,
 } from "./types";
 import MessageBubble from "./message-bubble";
-import ProcessingIndicator from "./processing-indicator";
-import SuggestionBar from "./suggestion-bar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { float } from "@/lib/animations";
 import { MessageSquareIcon, SendIcon, XIcon } from "lucide-react";
 
 interface TranscriptPanelProps {
@@ -26,7 +20,6 @@ interface TranscriptPanelProps {
   serverEventSeq?: number;
   onHighlight?: (highlight: TranscriptHighlight) => void;
   onSummary?: (summary: TranscriptSummary) => void;
-  onSuggestion?: (suggestion: TranscriptSuggestion | null) => void;
   onClear?: () => void;
   onTranscriptUpdate?: (items: TranscriptMessage[]) => void;
   onSendMessage?: (event: ClientEvent) => void;
@@ -39,17 +32,14 @@ export default function TranscriptPanel({
   serverEventSeq = 0,
   onHighlight,
   onSummary,
-  onSuggestion,
   onClear,
   onTranscriptUpdate,
   onSendMessage,
 }: TranscriptPanelProps) {
+  // Used by app/page.tsx as the main chat timeline.
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
-  const [processing, setProcessing] = useState<TranscriptProcessing | null>(null);
   const [interimOperator, setInterimOperator] = useState("");
   const [interimCustomer, setInterimCustomer] = useState("");
-  const [currentSuggestion, setCurrentSuggestion] = useState<TranscriptSuggestion | null>(null);
-  const [operatorMessageFinal, setOperatorMessageFinal] = useState(false);
   const [inputValue, setInputValue] = useState("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -64,7 +54,7 @@ export default function TranscriptPanel({
         behavior: "smooth",
       });
     }
-  }, [messages, processing, interimOperator, interimCustomer]);
+  }, [messages, interimOperator, interimCustomer]);
 
   useEffect(() => {
     onTranscriptUpdate?.(messages);
@@ -73,11 +63,8 @@ export default function TranscriptPanel({
   useEffect(() => {
     if (conversationId && prevConversationIdRef.current !== conversationId) {
       setMessages([]);
-      setProcessing(null);
       setInterimOperator("");
       setInterimCustomer("");
-      setCurrentSuggestion(null);
-      setOperatorMessageFinal(false);
       setInputValue("");
       prevConversationIdRef.current = conversationId;
       lastEventSeqRef.current = 0;
@@ -115,11 +102,6 @@ export default function TranscriptPanel({
             isUtterance: true,
           },
         ]);
-
-        if (serverEvent.role === "operator") {
-          setOperatorMessageFinal(true);
-          setTimeout(() => setOperatorMessageFinal(false), 100);
-        }
         break;
       }
 
@@ -134,21 +116,11 @@ export default function TranscriptPanel({
             isUtterance: false,
           },
         ]);
-
-        if (serverEvent.role === "operator") {
-          setOperatorMessageFinal(true);
-          setTimeout(() => setOperatorMessageFinal(false), 100);
-        }
         break;
       }
 
       case "processing": {
-        setProcessing({
-          id: `processing-${serverEvent.trigger_id}-${serverEvent.stage}`,
-          type: "processing",
-          triggerId: serverEvent.trigger_id,
-          stage: serverEvent.stage,
-        });
+        // Processing UI removed intentionally to keep this panel minimal.
         break;
       }
 
@@ -166,7 +138,6 @@ export default function TranscriptPanel({
       }
 
       case "summary": {
-        setProcessing(null);
         onSummary?.({
           id: serverEvent.id,
           type: "summary",
@@ -177,35 +148,20 @@ export default function TranscriptPanel({
       }
 
       case "suggestion": {
-        const suggestion: TranscriptSuggestion = {
-          id: serverEvent.id,
-          type: "suggestion",
-          triggerId: serverEvent.trigger_id,
-          text: serverEvent.content,
-        };
-        setCurrentSuggestion(suggestion);
-        onSuggestion?.(suggestion);
+        // Suggestion bar removed intentionally to reduce moving parts.
         break;
       }
 
       case "no_relevant_info": {
-        setProcessing(null);
         break;
       }
     }
-  }, [serverEvent, serverEventSeq, onHighlight, onSummary, onSuggestion]);
-
-  const handleDismissSuggestion = useCallback(() => {
-    setCurrentSuggestion(null);
-    onSuggestion?.(null);
-  }, [onSuggestion]);
+  }, [serverEvent, serverEventSeq, onHighlight, onSummary]);
 
   const handleClear = useCallback(() => {
     setMessages([]);
-    setProcessing(null);
     setInterimOperator("");
     setInterimCustomer("");
-    setCurrentSuggestion(null);
     setInputValue("");
     prevConversationIdRef.current = null;
     lastEventSeqRef.current = 0;
@@ -228,7 +184,7 @@ export default function TranscriptPanel({
         handleSendMessage();
       }
     },
-    [handleSendMessage]
+    [handleSendMessage],
   );
 
   const hasContent = messages.length > 0 || interimOperator || interimCustomer;
@@ -236,9 +192,9 @@ export default function TranscriptPanel({
   if (!conversationId && !hasContent) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-        <motion.div variants={float} initial="initial" animate="animate">
+        <div className="animate-pulse">
           <MessageSquareIcon className="h-12 w-12 mb-4 opacity-30" />
-        </motion.div>
+        </div>
         <p className="text-sm">Start a call to see the transcript</p>
       </div>
     );
@@ -256,51 +212,43 @@ export default function TranscriptPanel({
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 flex flex-col gap-3 p-4 overflow-y-auto pb-32">
-        <AnimatePresence mode="popLayout" initial={false}>
-          {messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              role={msg.role}
-              content={msg.content}
-              isPartial={false}
-              isUtterance={msg.isUtterance}
-            />
-          ))}
+      <div
+        ref={scrollRef}
+        className="flex-1 flex flex-col gap-3 p-4 overflow-y-auto pb-32"
+      >
+        {messages.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            role={msg.role}
+            content={msg.content}
+            isPartial={false}
+            isUtterance={msg.isUtterance}
+          />
+        ))}
 
-          {interimOperator && (
-            <MessageBubble
-              key="interim-operator"
-              role="operator"
-              content={interimOperator}
-              isPartial
-              isUtterance
-            />
-          )}
+        {interimOperator && (
+          <MessageBubble
+            key="interim-operator"
+            role="operator"
+            content={interimOperator}
+            isPartial
+            isUtterance
+          />
+        )}
 
-          {interimCustomer && (
-            <MessageBubble
-              key="interim-customer"
-              role="customer"
-              content={interimCustomer}
-              isPartial
-              isUtterance
-            />
-          )}
-
-          {processing && <ProcessingIndicator key={processing.id} stage={processing.stage} />}
-        </AnimatePresence>
+        {interimCustomer && (
+          <MessageBubble
+            key="interim-customer"
+            role="customer"
+            content={interimCustomer}
+            isPartial
+            isUtterance
+          />
+        )}
       </div>
 
       {!callEnded && (
         <>
-          <SuggestionBar
-            suggestion={currentSuggestion?.text ?? null}
-            suggestionId={currentSuggestion?.id ?? null}
-            onDismiss={handleDismissSuggestion}
-            operatorMessageFinal={operatorMessageFinal}
-          />
-
           {conversationId && onSendMessage && (
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t">
               <div className="flex gap-2 items-end">
@@ -310,7 +258,7 @@ export default function TranscriptPanel({
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Ask the copilot..."
-                  className="min-h-[40px] max-h-[120px] resize-none"
+                  className="min-h-10 max-h-30 resize-none"
                   rows={1}
                 />
                 <Button

@@ -1,6 +1,5 @@
 "use client";
 
-import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useEffect, useRef } from "react";
@@ -20,7 +19,10 @@ export default function DocumentViewer({
 
   useEffect(() => {
     if (highlightRef.current) {
-      highlightRef.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      highlightRef.current.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
     }
   }, []);
 
@@ -31,25 +33,22 @@ export default function DocumentViewer({
     const after = content.slice(highlightEnd);
 
     return (
-      <div className="p-4 max-h-[400px] overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-2 prose-headings:my-3">
+      <div className="p-4 max-h-100 overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-2 prose-headings:my-3">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{before}</ReactMarkdown>
-        <motion.span
+        <span
           ref={highlightRef}
-          initial={{ backgroundColor: "rgba(250, 204, 21, 0.6)" }}
-          animate={{ backgroundColor: "rgba(250, 204, 21, 0.3)" }}
-          transition={{ duration: 0.8, ease: "easeOut" }}
-          className="px-0.5 rounded dark:!bg-yellow-900/50"
+          className="px-0.5 rounded dark:bg-yellow-900/50!"
           style={{ backgroundColor: "rgba(250, 204, 21, 0.3)" }}
         >
           {highlighted}
-        </motion.span>
+        </span>
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{after}</ReactMarkdown>
       </div>
     );
   }
 
   return (
-    <div className="p-4 max-h-[400px] overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-2 prose-headings:my-3">
+    <div className="p-4 max-h-100 overflow-y-auto prose prose-sm dark:prose-invert prose-p:my-2 prose-headings:my-3">
       <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
     </div>
   );

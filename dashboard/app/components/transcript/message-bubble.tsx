@@ -1,7 +1,5 @@
 "use client";
 
-import { useRef, useEffect } from "react";
-import { motion } from "framer-motion";
 import { BotIcon, MicIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MessageRole } from "./types";
@@ -25,24 +23,15 @@ export default function MessageBubble({
   isPartial,
   isUtterance,
 }: MessageBubbleProps) {
-  const hasAnimated = useRef(false);
   const isOperator = role === "operator";
   const isCopilot = role === "copilot";
 
-  useEffect(() => {
-    hasAnimated.current = true;
-  }, []);
-
   return (
-    <motion.div
-      initial={hasAnimated.current ? false : { opacity: 0, x: isOperator ? 16 : -16 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: isOperator ? 8 : -8 }}
-      transition={{ duration: 0.2, ease: "easeOut" }}
+    <div
       className={cn(
         "max-w-[80%] rounded-lg px-4 py-2",
         roleStyles[role],
-        isPartial && "opacity-70"
+        isPartial && "opacity-70",
       )}
     >
       {isCopilot && (
@@ -53,14 +42,18 @@ export default function MessageBubble({
       )}
       <p className="text-sm whitespace-pre-wrap">{content}</p>
       {isUtterance && !isCopilot && (
-        <div className={cn(
-          "flex items-center gap-1 mt-1 text-xs",
-          isOperator ? "text-primary-foreground/60 justify-end" : "text-muted-foreground"
-        )}>
+        <div
+          className={cn(
+            "flex items-center gap-1 mt-1 text-xs",
+            isOperator
+              ? "text-primary-foreground/60 justify-end"
+              : "text-muted-foreground",
+          )}
+        >
           <MicIcon className="h-3 w-3" />
           <span>Voice</span>
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }
