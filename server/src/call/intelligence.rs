@@ -215,7 +215,6 @@ pub async fn run_pipeline(
     )
     .await?;
 
-    // TODO: Include conversation history in context (currently only uses triggering message)
     let conversation_context = fetch_conversation_context(state, conversation_id).await?;
 
     let llm = build_llm(state).map_err(|e| PipelineError::Generic(e.to_string()))?;
