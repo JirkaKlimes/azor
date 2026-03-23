@@ -1,8 +1,8 @@
 pub mod auth;
 pub mod call;
+pub mod documents;
 pub mod error;
 pub mod health;
-pub mod intelligence;
 pub mod uploads;
 
 use axum::Router;
@@ -15,5 +15,5 @@ pub fn router() -> Router<AppState> {
         .merge(health::router())
         .merge(uploads::router())
         .merge(call::router())
-        .merge(intelligence::router())
+        .merge(documents::router())
 }

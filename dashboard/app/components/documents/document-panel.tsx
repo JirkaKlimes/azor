@@ -105,7 +105,7 @@ export default function DocumentPanel({
               documentId={highlight.documentId}
               start={highlight.start}
               end={highlight.end}
-              sourcePath={highlight.sourcePath}
+              text={highlight.text}
               document={documents.get(highlight.documentId)}
               onLoadDocument={onLoadDocument}
               autoExpand={index === highlights.length - 1}

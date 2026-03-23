@@ -25,7 +25,7 @@ use state::AppState;
         api::auth::login,
         api::auth::me,
         api::call::call_websocket,
-        api::intelligence::get_document,
+        api::documents::get_document,
     ),
     components(schemas(
         api::health::HealthResponse,
@@ -42,14 +42,14 @@ use state::AppState;
         api::uploads::ChunkingEvent,
         api::uploads::CompletedEvent,
         api::uploads::ErrorEvent,
-        api::intelligence::DocumentResponse,
+        api::documents::DocumentResponse,
     )),
     tags(
         (name = "health", description = "Health check endpoints"),
         (name = "auth", description = "Authentication endpoints"),
         (name = "uploads", description = "Upload management"),
-        (name = "calls", description = "Call simulation and RAG pipeline"),
-        (name = "intelligence", description = "Intelligence events and document access")
+        (name = "calls", description = "Real-time call copilot"),
+        (name = "documents", description = "Document access")
     ),
     modifiers(&SecurityAddon)
 )]
