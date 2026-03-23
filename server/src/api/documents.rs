@@ -26,7 +26,7 @@ pub struct DocumentResponse {
         (status = 200, description = "Document content", body = DocumentResponse),
         (status = 404, description = "Document not found"),
     ),
-    tag = "intelligence"
+    tag = "documents"
 )]
 pub async fn get_document(
     Path(id): Path<String>,

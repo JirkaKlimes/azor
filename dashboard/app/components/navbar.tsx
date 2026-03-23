@@ -1,12 +1,12 @@
 "use client";
 
 import { GripVerticalIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { ThemeToggle } from "./themeToggle";
 import { Button } from "@/components/ui/button";
 import FavIcon from "../icons/favicon";
-import StartButton from "./start";
-import type { ServerEvent } from "./transcript/types";
+import StartButton, { type StartRef } from "./start";
+import type { ServerEvent, ClientEvent } from "./transcript/types";
 import { Separator } from "@/components/ui/separator";
 import { CommandWithGroups } from "./command";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -17,17 +17,29 @@ interface NavbarProps {
   onEvent?: (event: ServerEvent) => void;
 }
 
-export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarProps) {
+export interface NavbarRef {
+  sendMessage: (event: ClientEvent) => void;
+}
+
+const Navbar = forwardRef<NavbarRef, NavbarProps>(function Navbar(
+  { onConversationId, onCallEnd, onEvent },
+  ref
+) {
   const navbarRef = useRef<HTMLDivElement | null>(null);
+  const startRef = useRef<StartRef>(null);
   const dragOffsetRef = useRef<{ x: number; y: number } | null>(null);
   const [isPositioned, setIsPositioned] = useState(false);
   const [position, setPosition] = useState({ x: 24, y: 24 });
 
+  useImperativeHandle(ref, () => ({
+    sendMessage: (event: ClientEvent) => {
+      startRef.current?.sendMessage(event);
+    },
+  }));
+
   const clampPosition = useCallback((x: number, y: number) => {
     const navbar = navbarRef.current;
-    if (!navbar) {
-      return { x, y };
-    }
+    if (!navbar) return { x, y };
 
     const maxX = Math.max(0, window.innerWidth - navbar.offsetWidth);
     const maxY = Math.max(0, window.innerHeight - navbar.offsetHeight);
@@ -40,9 +52,7 @@ export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarP
 
   useEffect(() => {
     const navbar = navbarRef.current;
-    if (!navbar) {
-      return;
-    }
+    if (!navbar) return;
 
     const margin = 24;
     const startX = (window.innerWidth - navbar.offsetWidth) / 2;
@@ -61,14 +71,10 @@ export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarP
   }, [clampPosition]);
 
   const handlePointerDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.pointerType === "mouse" && event.button !== 0) {
-      return;
-    }
+    if (event.pointerType === "mouse" && event.button !== 0) return;
 
     const navbar = navbarRef.current;
-    if (!navbar) {
-      return;
-    }
+    if (!navbar) return;
 
     const rect = navbar.getBoundingClientRect();
     dragOffsetRef.current = {
@@ -82,9 +88,7 @@ export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarP
 
   const handlePointerMove = (event: React.PointerEvent<HTMLButtonElement>) => {
     const dragOffset = dragOffsetRef.current;
-    if (!dragOffset) {
-      return;
-    }
+    if (!dragOffset) return;
 
     const nextX = event.clientX - dragOffset.x;
     const nextY = event.clientY - dragOffset.y;
@@ -115,14 +119,19 @@ export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarP
         </div>
         <Separator orientation="vertical" className="my-1" />
         <CommandWithGroups />
-        <StartButton onConversationId={onConversationId} onCallEnd={onCallEnd} onEvent={onEvent} />
+        <StartButton
+          ref={startRef}
+          onConversationId={onConversationId}
+          onCallEnd={onCallEnd}
+          onEvent={onEvent}
+        />
         <ThemeToggle />
         <Avatar>
           <AvatarImage src="https://github.com/shadcn.png" />
           <AvatarFallback>CN</AvatarFallback>
         </Avatar>
         <Button
-          variant={"ghost"}
+          variant="ghost"
           type="button"
           aria-label="Drag navbar"
           className="rounded-md p-1 touch-none cursor-grab active:cursor-grabbing"
@@ -136,4 +145,6 @@ export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarP
       </div>
     </div>
   );
-}
+});
+
+export default Navbar;

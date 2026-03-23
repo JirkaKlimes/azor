@@ -13,7 +13,7 @@ interface DocumentCardProps {
   documentId: string;
   start: number;
   end: number;
-  sourcePath?: string;
+  text: string;
   document?: Document;
   onLoadDocument?: (documentId: string) => void;
   autoExpand?: boolean;
@@ -23,7 +23,7 @@ export default function DocumentCard({
   documentId,
   start,
   end,
-  sourcePath,
+  text,
   document,
   onLoadDocument,
   autoExpand = true,
@@ -31,8 +31,7 @@ export default function DocumentCard({
   const [expanded, setExpanded] = useState(autoExpand);
   const highlightRef = useRef<HTMLElement>(null);
 
-  // Prefer sourcePath from loaded document, fall back to prop (which may be undefined)
-  const title = getDocumentTitle(document?.sourcePath ?? sourcePath, documentId);
+  const title = getDocumentTitle(document?.sourcePath, documentId);
 
   // Auto-load document when card mounts or expands
   useEffect(() => {

@@ -3,20 +3,21 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type {
-  TranscriptItem,
   TranscriptMessage,
   TranscriptHighlight,
   TranscriptSummary,
   TranscriptSuggestion,
   TranscriptProcessing,
   ServerEvent,
+  ClientEvent,
 } from "./types";
 import MessageBubble from "./message-bubble";
 import ProcessingIndicator from "./processing-indicator";
 import SuggestionBar from "./suggestion-bar";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { float } from "@/lib/animations";
-import { MessageSquareIcon, XIcon } from "lucide-react";
+import { MessageSquareIcon, SendIcon, XIcon } from "lucide-react";
 
 interface TranscriptPanelProps {
   conversationId: string | null;
@@ -28,6 +29,7 @@ interface TranscriptPanelProps {
   onSuggestion?: (suggestion: TranscriptSuggestion | null) => void;
   onClear?: () => void;
   onTranscriptUpdate?: (items: TranscriptMessage[]) => void;
+  onSendMessage?: (event: ClientEvent) => void;
 }
 
 export default function TranscriptPanel({
@@ -40,18 +42,21 @@ export default function TranscriptPanel({
   onSuggestion,
   onClear,
   onTranscriptUpdate,
+  onSendMessage,
 }: TranscriptPanelProps) {
   const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [processing, setProcessing] = useState<TranscriptProcessing | null>(null);
-  const [interimOperator, setInterimOperator] = useState<string>("");
-  const [interimCustomer, setInterimCustomer] = useState<string>("");
+  const [interimOperator, setInterimOperator] = useState("");
+  const [interimCustomer, setInterimCustomer] = useState("");
   const [currentSuggestion, setCurrentSuggestion] = useState<TranscriptSuggestion | null>(null);
   const [operatorMessageFinal, setOperatorMessageFinal] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const prevConversationIdRef = useRef<string | null>(null);
-  const lastEventSeqRef = useRef<number>(0);
+  const [inputValue, setInputValue] = useState("");
 
-  // Auto-scroll to bottom on changes
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const prevConversationIdRef = useRef<string | null>(null);
+  const lastEventSeqRef = useRef(0);
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
@@ -61,12 +66,10 @@ export default function TranscriptPanel({
     }
   }, [messages, processing, interimOperator, interimCustomer]);
 
-  // Notify parent of transcript updates (final messages only)
   useEffect(() => {
     onTranscriptUpdate?.(messages);
   }, [messages, onTranscriptUpdate]);
 
-  // Reset state when conversation changes
   useEffect(() => {
     if (conversationId && prevConversationIdRef.current !== conversationId) {
       setMessages([]);
@@ -75,12 +78,12 @@ export default function TranscriptPanel({
       setInterimCustomer("");
       setCurrentSuggestion(null);
       setOperatorMessageFinal(false);
+      setInputValue("");
       prevConversationIdRef.current = conversationId;
       lastEventSeqRef.current = 0;
     }
   }, [conversationId]);
 
-  // Process incoming server events
   useEffect(() => {
     if (!serverEvent || serverEventSeq <= lastEventSeqRef.current) return;
     lastEventSeqRef.current = serverEventSeq;
@@ -95,26 +98,44 @@ export default function TranscriptPanel({
         break;
       }
 
-      case "final_transcript": {
-        // Clear interim for this role
+      case "utterance": {
         if (serverEvent.role === "operator") {
           setInterimOperator("");
         } else {
           setInterimCustomer("");
         }
 
-        const msg: TranscriptMessage = {
-          id: serverEvent.id,
-          type: "message",
-          role: serverEvent.role,
-          content: serverEvent.content,
-          isFinal: true,
-        };
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: serverEvent.id,
+            type: "message",
+            role: serverEvent.role,
+            content: serverEvent.content,
+            isUtterance: true,
+          },
+        ]);
 
-        setMessages((prev) => [...prev, msg]);
+        if (serverEvent.role === "operator") {
+          setOperatorMessageFinal(true);
+          setTimeout(() => setOperatorMessageFinal(false), 100);
+        }
+        break;
+      }
 
-        // Track operator final messages for suggestion dismiss logic
-        if (msg.role === "operator") {
+      case "message": {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: serverEvent.id,
+            type: "message",
+            role: serverEvent.role,
+            content: serverEvent.content,
+            isUtterance: false,
+          },
+        ]);
+
+        if (serverEvent.role === "operator") {
           setOperatorMessageFinal(true);
           setTimeout(() => setOperatorMessageFinal(false), 100);
         }
@@ -123,37 +144,35 @@ export default function TranscriptPanel({
 
       case "processing": {
         setProcessing({
-          id: `processing-${serverEvent.message_id}-${serverEvent.stage}`,
+          id: `processing-${serverEvent.trigger_id}-${serverEvent.stage}`,
           type: "processing",
-          messageId: serverEvent.message_id,
+          triggerId: serverEvent.trigger_id,
           stage: serverEvent.stage,
         });
         break;
       }
 
       case "highlight": {
-        const highlight: TranscriptHighlight = {
+        onHighlight?.({
           id: serverEvent.id,
           type: "highlight",
-          messageId: serverEvent.message_id,
+          triggerId: serverEvent.trigger_id,
           documentId: serverEvent.document_id,
-          start: serverEvent.start_char,
-          end: serverEvent.end_char,
-        };
-        onHighlight?.(highlight);
+          start: serverEvent.start,
+          end: serverEvent.end,
+          text: serverEvent.text,
+        });
         break;
       }
 
       case "summary": {
-        // Clear processing indicator
         setProcessing(null);
-        const summary: TranscriptSummary = {
+        onSummary?.({
           id: serverEvent.id,
           type: "summary",
-          messageId: serverEvent.message_id,
+          triggerId: serverEvent.trigger_id,
           text: serverEvent.content,
-        };
-        onSummary?.(summary);
+        });
         break;
       }
 
@@ -161,7 +180,7 @@ export default function TranscriptPanel({
         const suggestion: TranscriptSuggestion = {
           id: serverEvent.id,
           type: "suggestion",
-          messageId: serverEvent.message_id,
+          triggerId: serverEvent.trigger_id,
           text: serverEvent.content,
         };
         setCurrentSuggestion(suggestion);
@@ -170,7 +189,6 @@ export default function TranscriptPanel({
       }
 
       case "no_relevant_info": {
-        // Clear processing indicator
         setProcessing(null);
         break;
       }
@@ -188,15 +206,33 @@ export default function TranscriptPanel({
     setInterimOperator("");
     setInterimCustomer("");
     setCurrentSuggestion(null);
+    setInputValue("");
     prevConversationIdRef.current = null;
     lastEventSeqRef.current = 0;
     onClear?.();
   }, [onClear]);
 
-  // Check if we have any content to show
+  const handleSendMessage = useCallback(() => {
+    const content = inputValue.trim();
+    if (!content || !onSendMessage) return;
+
+    onSendMessage({ type: "message", content });
+    setInputValue("");
+    inputRef.current?.focus();
+  }, [inputValue, onSendMessage]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSendMessage();
+      }
+    },
+    [handleSendMessage]
+  );
+
   const hasContent = messages.length > 0 || interimOperator || interimCustomer;
 
-  // Empty state - no data and no active call
   if (!conversationId && !hasContent) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -210,7 +246,6 @@ export default function TranscriptPanel({
 
   return (
     <div className="relative h-full flex flex-col">
-      {/* Header with Clear button when call ended */}
       {callEnded && messages.length > 0 && (
         <div className="sticky top-0 z-10 bg-background/95 backdrop-blur px-4 py-2 border-b flex justify-between items-center">
           <span className="text-sm text-muted-foreground">Call ended</span>
@@ -221,57 +256,74 @@ export default function TranscriptPanel({
         </div>
       )}
 
-      {/* Transcript content */}
-      <div
-        ref={scrollRef}
-        className="flex-1 flex flex-col gap-3 p-4 overflow-y-auto pb-24"
-      >
+      <div ref={scrollRef} className="flex-1 flex flex-col gap-3 p-4 overflow-y-auto pb-32">
         <AnimatePresence mode="popLayout" initial={false}>
-          {/* Final messages */}
           {messages.map((msg) => (
             <MessageBubble
               key={msg.id}
               role={msg.role}
               content={msg.content}
               isPartial={false}
+              isUtterance={msg.isUtterance}
             />
           ))}
 
-          {/* Interim operator message */}
           {interimOperator && (
             <MessageBubble
               key="interim-operator"
               role="operator"
               content={interimOperator}
-              isPartial={true}
+              isPartial
+              isUtterance
             />
           )}
 
-          {/* Interim customer message */}
           {interimCustomer && (
             <MessageBubble
               key="interim-customer"
               role="customer"
               content={interimCustomer}
-              isPartial={true}
+              isPartial
+              isUtterance
             />
           )}
 
-          {/* Processing indicator - always at the end */}
-          {processing && (
-            <ProcessingIndicator key={processing.id} stage={processing.stage} />
-          )}
+          {processing && <ProcessingIndicator key={processing.id} stage={processing.stage} />}
         </AnimatePresence>
       </div>
 
-      {/* Floating suggestion bar at bottom - hide when call ended */}
       {!callEnded && (
-        <SuggestionBar
-          suggestion={currentSuggestion?.text ?? null}
-          suggestionId={currentSuggestion?.id ?? null}
-          onDismiss={handleDismissSuggestion}
-          operatorMessageFinal={operatorMessageFinal}
-        />
+        <>
+          <SuggestionBar
+            suggestion={currentSuggestion?.text ?? null}
+            suggestionId={currentSuggestion?.id ?? null}
+            onDismiss={handleDismissSuggestion}
+            operatorMessageFinal={operatorMessageFinal}
+          />
+
+          {conversationId && onSendMessage && (
+            <div className="absolute bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t">
+              <div className="flex gap-2 items-end">
+                <Textarea
+                  ref={inputRef}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask the copilot..."
+                  className="min-h-[40px] max-h-[120px] resize-none"
+                  rows={1}
+                />
+                <Button
+                  size="icon"
+                  onClick={handleSendMessage}
+                  disabled={!inputValue.trim()}
+                >
+                  <SendIcon className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

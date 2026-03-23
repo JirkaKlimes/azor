@@ -27,13 +27,13 @@ export default function Sidebar({
   callDuration,
 }: SidebarProps) {
   // Group highlights by document
-  const documentMap = new Map<string, { sourcePath?: string; count: number }>();
+  const documentMap = new Map<string, { count: number }>();
   for (const h of highlights) {
     const existing = documentMap.get(h.documentId);
     if (existing) {
       existing.count++;
     } else {
-      documentMap.set(h.documentId, { sourcePath: h.sourcePath, count: 1 });
+      documentMap.set(h.documentId, { count: 1 });
     }
   }
   const documentList = Array.from(documentMap.entries());
@@ -108,10 +108,9 @@ export default function Sidebar({
                 No documents referenced yet
               </motion.p>
             ) : (
-              documentList.map(([docId, { sourcePath, count }]) => {
-                // Prefer sourcePath from loaded document
+              documentList.map(([docId, { count }]) => {
                 const loadedDoc = documents?.get(docId);
-                const displayPath = loadedDoc?.sourcePath ?? sourcePath;
+                const displayPath = loadedDoc?.sourcePath;
                 return (
                   <motion.button
                     key={docId}
