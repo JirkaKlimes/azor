@@ -6,11 +6,18 @@ import { ThemeToggle } from "./themeToggle";
 import { Button } from "@/components/ui/button";
 import FavIcon from "../icons/favicon";
 import StartButton from "./start";
+import type { ServerEvent } from "./transcript/types";
 import { Separator } from "@/components/ui/separator";
 import { CommandWithGroups } from "./command";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-export default function Navbar() {
+interface NavbarProps {
+  onConversationId?: (id: string) => void;
+  onCallEnd?: () => void;
+  onEvent?: (event: ServerEvent) => void;
+}
+
+export default function Navbar({ onConversationId, onCallEnd, onEvent }: NavbarProps) {
   const navbarRef = useRef<HTMLDivElement | null>(null);
   const dragOffsetRef = useRef<{ x: number; y: number } | null>(null);
   const [isPositioned, setIsPositioned] = useState(false);
@@ -108,7 +115,7 @@ export default function Navbar() {
         </div>
         <Separator orientation="vertical" className="my-1" />
         <CommandWithGroups />
-        <StartButton />
+        <StartButton onConversationId={onConversationId} onCallEnd={onCallEnd} onEvent={onEvent} />
         <ThemeToggle />
         <Avatar>
           <AvatarImage src="https://github.com/shadcn.png" />

@@ -12,6 +12,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::ingest;
 use crate::ingest::embed;
 use crate::state::AppState;
+use crate::util::format_record_id;
 
 use super::error::ApiError;
 
@@ -226,7 +227,7 @@ async fn process_upload(
         &tx,
         "upload_created",
         &UploadCreatedEvent {
-            id: crate::api::call::format_record_id(&upload_id),
+            id: format_record_id(&upload_id),
             name,
             upload_type,
             status: "processing".into(),
@@ -352,7 +353,7 @@ async fn process_upload(
         &tx,
         "completed",
         &CompletedEvent {
-            id: crate::api::call::format_record_id(&upload_id),
+            id: format_record_id(&upload_id),
             status: "completed".into(),
             total_documents: documents.len(),
             total_chunks,

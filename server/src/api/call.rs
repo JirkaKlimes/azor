@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use axum::{
     Router,
     extract::{
@@ -8,19 +10,11 @@ use axum::{
     routing::get,
 };
 use futures::{SinkExt, StreamExt};
+use tokio::sync::Mutex;
 
+use crate::call::events::{ServerMessage, WsSender, send_message};
 use crate::call::{AudioChannel, AudioPacket, Call};
 use crate::state::AppState;
-
-// TODO: there has to be another way bro
-/// Format a SurrealDB RecordId as a string (e.g., "table:id")
-pub fn format_record_id(id: &surrealdb::types::RecordId) -> String {
-    match &id.key {
-        surrealdb::types::RecordIdKey::String(s) => format!("{}:{s}", id.table),
-        surrealdb::types::RecordIdKey::Number(n) => format!("{}:{n}", id.table),
-        other => format!("{}:{other:?}", id.table),
-    }
-}
 
 #[utoipa::path(
     get,
@@ -36,20 +30,30 @@ pub async fn call_websocket(ws: WebSocketUpgrade, State(state): State<AppState>)
 }
 
 async fn handle_socket(socket: WebSocket, state: AppState) {
-    let (mut sender, mut receiver) = socket.split();
+    let (sender, mut receiver) = socket.split();
+    let ws_sender: WsSender = Arc::new(Mutex::new(sender));
 
     tracing::info!("WebSocket connection established");
 
     // TODO: Extract user from JWT auth instead of using hardcoded demo user
     let demo_user_id = "demo".to_string();
 
-    let call = match Call::new(state, demo_user_id).await {
+    let call = match Call::new(state, demo_user_id, ws_sender.clone()).await {
         Ok(call) => call,
         Err(e) => {
             tracing::error!("Failed to create call: {}", e);
             return;
         }
     };
+
+    send_message(
+        &ws_sender,
+        ServerMessage::Connected {
+            conversation_id: call.conversation_id().to_string(),
+        },
+    )
+    .await;
+    tracing::info!("Sent conversation ID: {}", call.conversation_id());
 
     while let Some(msg) = receiver.next().await {
         match msg {
@@ -71,6 +75,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             }
             Ok(Message::Ping(data)) => {
                 tracing::debug!("Received ping");
+                let mut sender = ws_sender.lock().await;
                 if let Err(e) = sender.send(Message::Pong(data)).await {
                     tracing::error!("Failed to send pong: {}", e);
                     break;

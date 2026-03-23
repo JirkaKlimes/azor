@@ -1,7 +1,9 @@
 DEFINE TABLE IF NOT EXISTS intelligence SCHEMAFULL;
 
 DEFINE FIELD IF NOT EXISTS kind         ON intelligence TYPE string
-    ASSERT $value IN ['retrieval', 'highlight', 'summary', 'suggestion'];
+    ASSERT $value IN ['retrieval', 'highlight', 'summary', 'suggestion', 'processing', 'no_relevant_info'];
+DEFINE FIELD IF NOT EXISTS status       ON intelligence TYPE option<string>
+    ASSERT $value IN [NONE, 'pending', 'complete'];
 DEFINE FIELD IF NOT EXISTS conversation ON intelligence TYPE record<conversations>;
 DEFINE FIELD IF NOT EXISTS message      ON intelligence TYPE option<record<messages>>;
 DEFINE FIELD IF NOT EXISTS data         ON intelligence TYPE object FLEXIBLE;

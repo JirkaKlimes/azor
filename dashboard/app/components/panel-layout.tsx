@@ -16,17 +16,21 @@ export default function Layout({
 }) {
   return (
     <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
-      <ResizablePanel defaultSize="20%">
-        <div className="h-full p-6">{c1}</div>
+      {/* Sidebar - 15% */}
+      <ResizablePanel defaultSize={15} minSize={10} maxSize={25}>
+        <div className="h-full">{c1}</div>
       </ResizablePanel>
       <ResizableHandle withHandle />
-      <ResizablePanel defaultSize="80%">
+      {/* Main content - 85% */}
+      <ResizablePanel defaultSize={85}>
         <ResizablePanelGroup orientation="horizontal">
-          <ResizablePanel defaultSize="40%">
-            <div className="h-full p-6">{c2}</div>
+          {/* Document panel - 50% of remaining */}
+          <ResizablePanel defaultSize={50} minSize={30}>
+            <div className="h-full">{c2}</div>
           </ResizablePanel>
           <ResizableHandle withHandle />
-          <ResizablePanel defaultSize="40%">
+          {/* Transcript panel - 50% of remaining */}
+          <ResizablePanel defaultSize={50} minSize={30}>
             <div className="h-full">{c3}</div>
           </ResizablePanel>
         </ResizablePanelGroup>

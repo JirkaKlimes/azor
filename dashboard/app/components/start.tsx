@@ -5,8 +5,15 @@ import { ButtonGroup } from "@/components/ui/button-group";
 import { MicIcon, PauseIcon, PlayIcon, UploadIcon } from "lucide-react";
 import React from "react";
 import { toast } from "sonner";
+import type { ServerEvent } from "./transcript/types";
 
-export default function Start() {
+interface StartProps {
+  onConversationId?: (id: string) => void;
+  onCallEnd?: () => void;
+  onEvent?: (event: ServerEvent) => void;
+}
+
+export default function Start({ onConversationId, onCallEnd, onEvent }: StartProps) {
   const [on, setOn] = React.useState(false);
   const [replaying, setReplaying] = React.useState(false);
   const [replayProgress, setReplayProgress] = React.useState(0);
@@ -21,6 +28,24 @@ export default function Start() {
       const wsUrl = `ws://localhost:7600/api/call`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === "string") {
+          try {
+            const msg = JSON.parse(event.data) as ServerEvent;
+
+            // Forward all events to parent
+            onEvent?.(msg);
+
+            // Handle connected specifically for backwards compat
+            if (msg.type === "connected") {
+              onConversationId?.(msg.conversation_id);
+            }
+          } catch {
+            // Ignore non-JSON messages
+          }
+        }
+      };
 
       ws.onopen = async () => {
         toast("Replay started", {
@@ -84,6 +109,7 @@ export default function Start() {
 
       ws.onclose = () => {
         wsRef.current = null;
+        onCallEnd?.();
       };
     } catch (error) {
       console.error("Replay error:", error);
