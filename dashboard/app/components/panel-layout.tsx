@@ -15,6 +15,20 @@ export default function Layout({
   c3: ReactNode;
 }) {
   return (
+    <ResizablePanelGroup orientation="horizontal">
+      {/* Document panel - 50% of remaining */}
+      <ResizablePanel defaultSize={50} minSize={30}>
+        <div className="h-full">{c2}</div>
+      </ResizablePanel>
+      <ResizableHandle withHandle />
+      {/* Transcript panel - 50% of remaining */}
+      <ResizablePanel defaultSize={50} minSize={30}>
+        <div className="h-full">{c3}</div>
+      </ResizablePanel>
+    </ResizablePanelGroup>
+  );
+
+  return (
     <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
       {/* Sidebar - 15% */}
       <ResizablePanel defaultSize={15} minSize={10} maxSize={25}>
