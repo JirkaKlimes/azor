@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { SparklesIcon, FileSearchIcon, XIcon } from 'lucide-react'
+import { SparklesIcon, XIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import DocumentCard from './document-card'
 import type {
@@ -45,9 +45,6 @@ export default function DocumentPanel({
     if (!hasData) {
         return (
             <div className="text-muted-foreground flex h-full flex-col items-center justify-center">
-                <div className="animate-pulse">
-                    <FileSearchIcon className="mb-4 h-12 w-12 opacity-30" />
-                </div>
                 <p className="text-sm">Relevant documents will appear here</p>
             </div>
         )

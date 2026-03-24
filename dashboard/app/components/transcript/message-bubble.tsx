@@ -4,9 +4,8 @@ import { cn } from '@/lib/utils'
 import type { MessageRole } from './types'
 
 const roleStyles = {
-    operator: 'ml-auto bg-primary/90 text-muted',
-    customer: 'mr-auto bg-accent',
-    // copilot: 'mr-auto bg-accent border border-accent-foreground/10',
+    operator: 'ml-auto bg-primary/90 text-muted dark:bg-accent dark:text-white',
+    customer: 'mr-auto bg-accent dark:bg-primary/90 dark:text-muted',
 } as const
 
 export default function MessageBubble({
@@ -27,6 +26,18 @@ export default function MessageBubble({
             )}
         >
             <p className="whitespace-pre-wrap text-sm">{content}</p>
+            <div
+                className={cn(
+                    'mt-1 flex items-center gap-1 text-xs',
+                    role == 'operator'
+                        ? 'text-primary-foreground/60 dark:text-muted-foreground justify-end'
+                        : 'text-muted-foreground dark:text-primary-foreground/60',
+                )}
+            >
+                <span className="capitalize">
+                    {role == 'operator' ? 'You' : 'Customer'}
+                </span>
+            </div>
         </div>
     )
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef } from 'react'
-import Layout from './components/panel-layout'
+import PanelLayout from './components/panel-layout'
 import Navbar, { type NavbarRef } from './components/navbar'
 import DocumentPanel from './components/documents/document-panel'
 import { TranscriptPanel } from './components/transcript'
@@ -10,7 +10,6 @@ import type {
     TranscriptSummary,
     Document,
     ServerEvent,
-    ClientEvent,
 } from './components/transcript/types'
 
 const API_BASE = 'http://localhost:7600/api'
@@ -88,10 +87,6 @@ export default function Home() {
         [documents],
     )
 
-    const handleSendMessage = useCallback((event: ClientEvent) => {
-        navbarRef.current?.sendMessage(event)
-    }, [])
-
     return (
         <div className="flex h-screen w-screen items-center justify-center">
             <Navbar
@@ -100,7 +95,7 @@ export default function Home() {
                 onCallEnd={handleCallEnd}
                 onEvent={handleEvent}
             />
-            <Layout
+            <PanelLayout
                 c1={
                     <DocumentPanel
                         highlights={highlights}
@@ -120,7 +115,6 @@ export default function Home() {
                         onHighlight={handleHighlight}
                         onSummary={handleSummary}
                         onClear={handleClearSession}
-                        onSendMessage={handleSendMessage}
                     />
                 }
             />
