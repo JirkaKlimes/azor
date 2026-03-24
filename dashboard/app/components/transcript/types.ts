@@ -1,4 +1,4 @@
-export type MessageRole = 'operator' | 'customer' | 'copilot'
+export type MessageRole = 'operator' | 'customer'
 
 export interface TranscriptMessage {
     id: string

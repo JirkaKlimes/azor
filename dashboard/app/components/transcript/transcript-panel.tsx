@@ -190,10 +190,7 @@ export default function TranscriptPanel({
     if (!conversationId && !hasContent) {
         return (
             <div className="text-muted-foreground flex h-full flex-col items-center justify-center">
-                <div className="animate-pulse">
-                    <MessageSquareIcon className="mb-4 h-12 w-12 opacity-30" />
-                </div>
-                <p className="text-sm">Start a call to see the transcript</p>
+                <p className="text-sm">Start a call to see the transcript.</p>
             </div>
         )
     }
@@ -205,7 +202,7 @@ export default function TranscriptPanel({
                     <span className="text-muted-foreground text-sm">Call ended</span>
                     <Button size="sm" variant="ghost" onClick={handleClear}>
                         <XIcon className="mr-1 h-4 w-4" />
-                        Clear
+                        Clear hfw
                     </Button>
                 </div>
             )}
@@ -245,7 +242,8 @@ export default function TranscriptPanel({
                 )}
             </div>
 
-            {!callEnded && (
+            {/* Send message */}
+            {/* {!callEnded && (
                 <>
                     {conversationId && onSendMessage && (
                         <div className="bg-background/95 absolute bottom-0 left-0 right-0 border-t p-4 backdrop-blur">
@@ -270,7 +268,7 @@ export default function TranscriptPanel({
                         </div>
                     )}
                 </>
-            )}
+            )} */}
         </div>
     )
 }
