@@ -202,7 +202,7 @@ export default function TranscriptPanel({
                     <span className="text-muted-foreground text-sm">Call ended</span>
                     <Button size="sm" variant="ghost" onClick={handleClear}>
                         <XIcon className="mr-1 h-4 w-4" />
-                        Clear hfw
+                        Clear
                     </Button>
                 </div>
             )}
@@ -217,7 +217,6 @@ export default function TranscriptPanel({
                         role={msg.role}
                         content={msg.content}
                         isPartial={false}
-                        isUtterance={msg.isUtterance}
                     />
                 ))}
 
@@ -227,7 +226,6 @@ export default function TranscriptPanel({
                         role="operator"
                         content={interimOperator}
                         isPartial
-                        isUtterance
                     />
                 )}
 
@@ -237,7 +235,6 @@ export default function TranscriptPanel({
                         role="customer"
                         content={interimCustomer}
                         isPartial
-                        isUtterance
                     />
                 )}
             </div>
