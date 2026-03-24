@@ -1,23 +1,21 @@
-"use client";
+'use client'
 
-import { SparklesIcon } from "lucide-react";
+import { SparklesIcon } from 'lucide-react'
 
 interface SummaryCardProps {
-  text: string;
+    text: string
 }
 
 export default function SummaryCard({ text }: SummaryCardProps) {
-  return (
-    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
-      <div className="flex items-center gap-2 mb-2">
-        <div>
-          <SparklesIcon className="h-4 w-4 text-primary" />
+    return (
+        <div className="border-border bg-muted/30 rounded-lg border px-4 py-3">
+            <div className="mb-2 flex items-center gap-2">
+                <div>
+                    <SparklesIcon className="text-primary h-4 w-4" />
+                </div>
+                <span className="text-muted-foreground text-xs font-medium">Summary</span>
+            </div>
+            <p className="whitespace-pre-wrap text-sm">{text}</p>
         </div>
-        <span className="text-xs font-medium text-muted-foreground">
-          Summary
-        </span>
-      </div>
-      <p className="text-sm whitespace-pre-wrap">{text}</p>
-    </div>
-  );
+    )
 }
