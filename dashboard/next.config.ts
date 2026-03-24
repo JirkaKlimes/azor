@@ -1,8 +1,8 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  output: "export",
-  transpilePackages: ["react-markdown"],
-};
+    output: 'export',
+    transpilePackages: ['react-markdown'],
+}
 
-export default nextConfig;
+export default nextConfig
