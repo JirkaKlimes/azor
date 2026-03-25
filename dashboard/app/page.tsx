@@ -3,14 +3,9 @@
 import { useState, useCallback, useRef } from 'react'
 import PanelLayout from './components/panel-layout'
 import Navbar, { type NavbarRef } from './components/navbar'
-import DocumentPanel from './components/documents/document-panel'
+import { ChatPanel, type ChatItem, type AIResponse } from './components/chat'
 import { TranscriptPanel } from './components/transcript'
-import type {
-    TranscriptHighlight,
-    TranscriptSummary,
-    Document,
-    ServerEvent,
-} from './components/transcript/types'
+import type { Document, ServerEvent } from './components/transcript/types'
 
 const API_BASE = 'http://localhost:7600/api'
 
@@ -18,9 +13,8 @@ export default function Home() {
     // Used by Navbar + TranscriptPanel to represent one active websocket session.
     const [conversationId, setConversationId] = useState<string | null>(null)
     const [callEnded, setCallEnded] = useState(false)
-    // Used by DocumentPanel.
-    const [highlights, setHighlights] = useState<TranscriptHighlight[]>([])
-    const [summary, setSummary] = useState<TranscriptSummary | null>(null)
+    // Used by ChatPanel
+    const [chatItems, setChatItems] = useState<ChatItem[]>([])
     const [documents, setDocuments] = useState<Map<string, Document>>(new Map())
     const [latestEvent, setLatestEvent] = useState<{
         event: ServerEvent
@@ -31,8 +25,7 @@ export default function Home() {
     const eventSeqRef = useRef(0)
 
     const resetSessionData = useCallback(() => {
-        setHighlights([])
-        setSummary(null)
+        setChatItems([])
         setDocuments(new Map())
         setLatestEvent(null)
     }, [])
@@ -56,6 +49,50 @@ export default function Home() {
     const handleEvent = useCallback((event: ServerEvent) => {
         eventSeqRef.current += 1
         setLatestEvent({ event, seq: eventSeqRef.current })
+
+        // Handle processing event - add loading state
+        if (event.type === 'processing' && event.stage === 'retrieving') {
+            setChatItems((prev) => [
+                ...prev,
+                { type: 'loading', triggerId: event.trigger_id },
+            ])
+        }
+
+        // Handle response event - replace loading with response
+        if (event.type === 'response') {
+            const response: AIResponse = {
+                id: event.id,
+                triggerId: event.trigger_id,
+                content: event.content,
+                references: event.references.map((ref) => ({
+                    documentId: ref.document_id,
+                    start: ref.start,
+                    end: ref.end,
+                    text: ref.text,
+                })),
+                suggestion: event.suggestion,
+            }
+            setChatItems((prev) => {
+                // Remove the loading item for this trigger and add the response
+                const filtered = prev.filter(
+                    (item) =>
+                        item.type !== 'loading' ||
+                        item.triggerId !== event.trigger_id,
+                )
+                return [...filtered, { type: 'response', data: response }]
+            })
+        }
+
+        // Handle operator message event - add question to chat
+        if (event.type === 'message' && event.role === 'operator') {
+            setChatItems((prev) => [
+                ...prev,
+                {
+                    type: 'question',
+                    data: { id: event.id, content: event.content },
+                },
+            ])
+        }
     }, [])
 
     const handleClearSession = useCallback(() => {
@@ -63,12 +100,8 @@ export default function Home() {
         setCallEnded(false)
     }, [resetSessionData])
 
-    const handleHighlight = useCallback((highlight: TranscriptHighlight) => {
-        setHighlights((prev) => [...prev, highlight])
-    }, [])
-
-    const handleSummary = useCallback((newSummary: TranscriptSummary) => {
-        setSummary(newSummary)
+    const handleSendMessage = useCallback((content: string) => {
+        navbarRef.current?.sendMessage({ type: 'message', content })
     }, [])
 
     const loadDocument = useCallback(
@@ -97,11 +130,11 @@ export default function Home() {
             />
             <PanelLayout
                 c1={
-                    <DocumentPanel
-                        highlights={highlights}
-                        summary={summary}
+                    <ChatPanel
+                        items={chatItems}
                         documents={documents}
                         onLoadDocument={loadDocument}
+                        onSendMessage={handleSendMessage}
                         callEnded={callEnded}
                         onClear={handleClearSession}
                     />
@@ -112,8 +145,6 @@ export default function Home() {
                         callEnded={callEnded}
                         serverEvent={latestEvent?.event ?? null}
                         serverEventSeq={latestEvent?.seq ?? 0}
-                        onHighlight={handleHighlight}
-                        onSummary={handleSummary}
                         onClear={handleClearSession}
                     />
                 }

@@ -665,6 +665,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "strsim",
  "surrealdb",
  "text-splitter",
  "thiserror 2.0.18",

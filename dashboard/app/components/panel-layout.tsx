@@ -13,7 +13,7 @@ export default function PanelLayout({ c1, c2 }: { c1: ReactNode; c2: ReactNode }
                 <span>Transcription</span>
             </div>
             <ResizablePanelGroup orientation="horizontal" className="h-full w-full">
-                {/* Document panel */}
+                {/* Chat panel */}
                 <ResizablePanel defaultSize="67%" minSize="50%" maxSize="80%">
                     <div className="h-full">{c1}</div>
                 </ResizablePanel>

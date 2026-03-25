@@ -6,6 +6,7 @@ import type { MessageRole } from './types'
 const roleStyles = {
     operator: 'ml-auto bg-primary/90 text-muted dark:bg-accent dark:text-white',
     customer: 'mr-auto bg-accent dark:bg-primary/90 dark:text-muted',
+    copilot: 'mr-auto bg-muted border border-border',
 } as const
 
 export default function MessageBubble({
@@ -29,13 +30,13 @@ export default function MessageBubble({
             <div
                 className={cn(
                     'mt-1 flex items-center gap-1 text-xs',
-                    role == 'operator'
+                    role === 'operator'
                         ? 'text-primary-foreground/60 dark:text-muted-foreground justify-end'
                         : 'text-muted-foreground dark:text-primary-foreground/60',
                 )}
             >
                 <span className="capitalize">
-                    {role == 'operator' ? 'You' : 'Customer'}
+                    {role === 'operator' ? 'You' : role === 'copilot' ? 'AI' : 'Customer'}
                 </span>
             </div>
         </div>

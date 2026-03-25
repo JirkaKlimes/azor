@@ -87,6 +87,8 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
                     )
                 }
 
+                // Wait for LLM responses before closing (they can take 10-30 seconds)
+                await new Promise((resolve) => setTimeout(resolve, 30000))
                 ws.close()
             }
 

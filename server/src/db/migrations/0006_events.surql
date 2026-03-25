@@ -4,12 +4,9 @@ DEFINE FIELD conversation ON events TYPE record<conversations>;
 DEFINE FIELD kind ON events TYPE string ASSERT $value IN [
     "utterance",
     "message",
-    "highlight",
-    "summary",
-    "suggestion",
+    "response",
     "retrieval",
-    "processing",
-    "no_relevant_info"
+    "processing"
 ];
 DEFINE FIELD role ON events TYPE string ASSERT $value IN ["customer", "operator", "copilot", "system"];
 DEFINE FIELD content ON events TYPE string DEFAULT "";

@@ -2,28 +2,19 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import type {
-    TranscriptMessage,
-    TranscriptHighlight,
-    TranscriptSummary,
-    ServerEvent,
-} from './types'
+import type { TranscriptMessage, ServerEvent } from './types'
 import MessageBubble from './message-bubble'
 
 export default function TranscriptPanel({
     conversationId,
     serverEvent,
     serverEventSeq = 0,
-    onHighlight,
-    onSummary,
     onTranscriptUpdate,
 }: {
     conversationId: string | null
     callEnded?: boolean
     serverEvent?: ServerEvent | null
     serverEventSeq?: number
-    onHighlight?: (highlight: TranscriptHighlight) => void
-    onSummary?: (summary: TranscriptSummary) => void
     onClear?: () => void
     onTranscriptUpdate?: (items: TranscriptMessage[]) => void
 }) {
@@ -107,44 +98,12 @@ export default function TranscriptPanel({
                 break
             }
 
-            case 'processing': {
-                // Processing UI removed intentionally to keep this panel minimal.
+            case 'processing':
+            case 'response':
+                // These events are handled by the ChatPanel
                 break
-            }
-
-            case 'highlight': {
-                onHighlight?.({
-                    id: serverEvent.id,
-                    type: 'highlight',
-                    triggerId: serverEvent.trigger_id,
-                    documentId: serverEvent.document_id,
-                    start: serverEvent.start,
-                    end: serverEvent.end,
-                    text: serverEvent.text,
-                })
-                break
-            }
-
-            case 'summary': {
-                onSummary?.({
-                    id: serverEvent.id,
-                    type: 'summary',
-                    triggerId: serverEvent.trigger_id,
-                    text: serverEvent.content,
-                })
-                break
-            }
-
-            case 'suggestion': {
-                // Suggestion bar removed intentionally to reduce moving parts.
-                break
-            }
-
-            case 'no_relevant_info': {
-                break
-            }
         }
-    }, [serverEvent, serverEventSeq, onHighlight, onSummary])
+    }, [serverEvent, serverEventSeq])
 
     const hasContent = messages.length > 0 || interimOperator || interimCustomer
 
