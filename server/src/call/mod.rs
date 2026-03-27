@@ -52,8 +52,6 @@ pub struct Call {
     ws_sender: WsSender,
     operator_session: SonioxSession,
     customer_session: SonioxSession,
-    operator_utterance_rx: tokio::sync::Mutex<mpsc::Receiver<()>>,
-    customer_utterance_rx: tokio::sync::Mutex<mpsc::Receiver<()>>,
     pending_pipelines: Arc<AtomicUsize>,
     pipeline_done: Arc<Notify>,
     operator_packets: AtomicUsize,
@@ -72,24 +70,20 @@ impl Call {
         let pending_pipelines = Arc::new(AtomicUsize::new(0));
         let pipeline_done = Arc::new(Notify::new());
 
-        let (op_utterance_tx, op_utterance_rx) = mpsc::channel(1);
         let operator_session = spawn_asr_handler(
             state.clone(),
             conversation_id.clone(),
             "operator",
             ws_sender.clone(),
-            op_utterance_tx,
             None, // no pipeline for operator
         )
         .await?;
 
-        let (cust_utterance_tx, cust_utterance_rx) = mpsc::channel(1);
         let customer_session = spawn_asr_handler(
             state.clone(),
             conversation_id.clone(),
             "customer",
             ws_sender.clone(),
-            cust_utterance_tx,
             Some((pending_pipelines.clone(), pipeline_done.clone())),
         )
         .await?;
@@ -100,8 +94,6 @@ impl Call {
             ws_sender,
             operator_session,
             customer_session,
-            operator_utterance_rx: tokio::sync::Mutex::new(op_utterance_rx),
-            customer_utterance_rx: tokio::sync::Mutex::new(cust_utterance_rx),
             pending_pipelines,
             pipeline_done,
             operator_packets: AtomicUsize::new(0),
@@ -188,12 +180,8 @@ impl Call {
         let _ = self.operator_session.flush().await;
         let _ = self.customer_session.flush().await;
 
-        let wait_utterances = async {
-            let mut op_rx = self.operator_utterance_rx.lock().await;
-            let mut cust_rx = self.customer_utterance_rx.lock().await;
-            tokio::join!(op_rx.recv(), cust_rx.recv());
-        };
-        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(3), wait_utterances).await;
+        // Wait for final transcripts to be processed
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let wait_pipelines = async {
             while self.pending_pipelines.load(Ordering::SeqCst) > 0 {
@@ -284,7 +272,6 @@ async fn spawn_asr_handler(
     conversation_id: RecordId,
     role: &'static str,
     ws: WsSender,
-    utterance_tx: mpsc::Sender<()>,
     pipeline_info: Option<PipelineInfo>,
 ) -> Result<SonioxSession, CallError> {
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -363,9 +350,6 @@ async fn spawn_asr_handler(
                 });
             }
 
-            if is_utterance_end {
-                let _ = utterance_tx.send(()).await;
-            }
         }
     });
 
