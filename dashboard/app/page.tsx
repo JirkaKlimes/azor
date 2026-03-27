@@ -1,6 +1,6 @@
+import CopilotPanelContent from './components/copilotPanel/copilotPanelContent'
 import Navbar from './components/navbar'
-import { ChatPanel } from './components/chat'
-import { TranscriptPanel } from './components/transcript'
+import TranscriptPanelContent from './components/transcript/transcriptPanelContent'
 
 export default function Home() {
     return (
@@ -12,13 +12,13 @@ export default function Home() {
                         <p className="bg-accent text-muted-foreground absolute left-0 top-0 z-10 h-8 w-full border-b px-2 py-1 shadow">
                             Copilot
                         </p>
-                        <ChatPanel />
+                        <CopilotPanelContent />
                     </div>
                     <div className="relative flex w-1/3 flex-col overflow-hidden rounded-lg border pt-8 shadow-md hover:cursor-not-allowed">
                         <p className="bg-accent text-muted-foreground absolute left-0 top-0 z-10 h-8 w-full border-b px-2 py-1 shadow">
                             Transcript
                         </p>
-                        <TranscriptPanel />
+                        <TranscriptPanelContent />
                     </div>
                 </div>
             </div>

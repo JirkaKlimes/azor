@@ -2,7 +2,12 @@
 
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react'
 import type { ChatItem, AIResponse } from '../components/chat'
-import type { ClientEvent, Document, ServerEvent } from '../components/transcript/types'
+import type {
+    ClientEvent,
+    Document,
+    ServerEvent,
+    TranscriptMessage,
+} from '../components/transcript/types'
 
 const API_BASE = 'http://localhost:7600/api'
 
@@ -15,6 +20,7 @@ interface AppContextValue {
     conversationId: string | null
     callEnded: boolean
     chatItems: ChatItem[]
+    transcriptMessages: TranscriptMessage[]
     documents: Map<string, Document>
     latestEvent: LatestEvent | null
     latestEventSeq: number
@@ -33,6 +39,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
     const [conversationId, setConversationId] = useState<string | null>(null)
     const [callEnded, setCallEnded] = useState(false)
     const [chatItems, setChatItems] = useState<ChatItem[]>([])
+    const [transcriptMessages, setTranscriptMessages] = useState<TranscriptMessage[]>([])
     const [documents, setDocuments] = useState<Map<string, Document>>(new Map())
     const [latestEvent, setLatestEvent] = useState<LatestEvent | null>(null)
 
@@ -41,6 +48,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
 
     const resetSessionData = useCallback(() => {
         setChatItems([])
+        setTranscriptMessages([])
         setDocuments(new Map())
         setLatestEvent(null)
     }, [])
@@ -103,6 +111,19 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
                 },
             ])
         }
+
+        if (event.type === 'utterance' || event.type === 'message') {
+            setTranscriptMessages((prev) => [
+                ...prev,
+                {
+                    id: event.id,
+                    type: 'message',
+                    role: event.role,
+                    content: event.content,
+                    isUtterance: event.type === 'utterance',
+                },
+            ])
+        }
     }, [])
 
     const clearSession = useCallback(() => {
@@ -144,6 +165,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
             conversationId,
             callEnded,
             chatItems,
+            transcriptMessages,
             documents,
             latestEvent,
             latestEventSeq: latestEvent?.seq ?? 0,
@@ -159,6 +181,7 @@ export function AppProvider({ children }: Readonly<{ children: React.ReactNode }
             conversationId,
             callEnded,
             chatItems,
+            transcriptMessages,
             documents,
             latestEvent,
             handleConversationId,
