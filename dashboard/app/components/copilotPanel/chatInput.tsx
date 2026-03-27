@@ -22,7 +22,7 @@ export default function ChatInput({ disabled }: { disabled?: boolean }) {
 
     return (
         <div className="absolute bottom-4 self-center">
-            <div className="w-md bg-background flex items-center gap-2 rounded-full border p-1">
+            <div className="w-md bg-background flex items-center gap-2 rounded-full border p-1 shadow">
                 <Input
                     value={value}
                     onChange={(e) => setValue(e.target.value)}

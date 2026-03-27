@@ -43,6 +43,7 @@ pub struct AudioPacket {
 
 struct UtteranceBuffer {
     content: String,
+    interim: String,
 }
 
 pub struct Call {
@@ -51,10 +52,10 @@ pub struct Call {
     ws_sender: WsSender,
     operator_session: SonioxSession,
     customer_session: SonioxSession,
-    operator_utterance_rx: tokio::sync::Mutex<mpsc::Receiver<()>>,
-    customer_utterance_rx: tokio::sync::Mutex<mpsc::Receiver<()>>,
     pending_pipelines: Arc<AtomicUsize>,
     pipeline_done: Arc<Notify>,
+    operator_packets: AtomicUsize,
+    customer_packets: AtomicUsize,
 }
 
 impl Call {
@@ -69,24 +70,20 @@ impl Call {
         let pending_pipelines = Arc::new(AtomicUsize::new(0));
         let pipeline_done = Arc::new(Notify::new());
 
-        let (op_utterance_tx, op_utterance_rx) = mpsc::channel(1);
         let operator_session = spawn_asr_handler(
             state.clone(),
             conversation_id.clone(),
             "operator",
             ws_sender.clone(),
-            op_utterance_tx,
             None, // no pipeline for operator
         )
         .await?;
 
-        let (cust_utterance_tx, cust_utterance_rx) = mpsc::channel(1);
         let customer_session = spawn_asr_handler(
             state.clone(),
             conversation_id.clone(),
             "customer",
             ws_sender.clone(),
-            cust_utterance_tx,
             Some((pending_pipelines.clone(), pipeline_done.clone())),
         )
         .await?;
@@ -97,10 +94,10 @@ impl Call {
             ws_sender,
             operator_session,
             customer_session,
-            operator_utterance_rx: tokio::sync::Mutex::new(op_utterance_rx),
-            customer_utterance_rx: tokio::sync::Mutex::new(cust_utterance_rx),
             pending_pipelines,
             pipeline_done,
+            operator_packets: AtomicUsize::new(0),
+            customer_packets: AtomicUsize::new(0),
         })
     }
 
@@ -110,9 +107,7 @@ impl Call {
 
     pub async fn handle_message(&self, msg: ClientMessage) -> Result<(), CallError> {
         match msg {
-            ClientMessage::Message { content } => {
-                self.handle_operator_message(content).await
-            }
+            ClientMessage::Message { content } => self.handle_operator_message(content).await,
         }
     }
 
@@ -144,7 +139,9 @@ impl Call {
 
         pending.fetch_add(1, Ordering::SeqCst);
         tokio::spawn(async move {
-            if let Err(e) = intelligence::run_pipeline(&state, &conv_id, &event_id, &content, ws).await {
+            if let Err(e) =
+                intelligence::run_pipeline(&state, &conv_id, &event_id, &content, ws).await
+            {
                 tracing::error!(error = %e, "pipeline failed for operator message");
             }
             pending.fetch_sub(1, Ordering::SeqCst);
@@ -155,23 +152,36 @@ impl Call {
     }
 
     pub async fn send_audio(&self, packet: AudioPacket) -> Result<(), CallError> {
-        let session = match packet.channel {
-            AudioChannel::Operator => &self.operator_session,
-            AudioChannel::Customer => &self.customer_session,
+        let (session, counter) = match packet.channel {
+            AudioChannel::Operator => (&self.operator_session, &self.operator_packets),
+            AudioChannel::Customer => (&self.customer_session, &self.customer_packets),
         };
-        session.send_audio(&packet.pcm).await.map_err(CallError::Asr)
+
+        let count = counter.fetch_add(1, Ordering::Relaxed) + 1;
+        if count % 200 == 0 {
+            let (rms, peak) = audio_stats(&packet.pcm);
+            tracing::debug!(
+                channel = ?packet.channel,
+                packets = count,
+                bytes = packet.pcm.len(),
+                rms = rms,
+                peak = peak,
+                "audio packets received"
+            );
+        }
+
+        session
+            .send_audio(&packet.pcm)
+            .await
+            .map_err(CallError::Asr)
     }
 
     pub async fn flush(&self) {
         let _ = self.operator_session.flush().await;
         let _ = self.customer_session.flush().await;
 
-        let wait_utterances = async {
-            let mut op_rx = self.operator_utterance_rx.lock().await;
-            let mut cust_rx = self.customer_utterance_rx.lock().await;
-            tokio::join!(op_rx.recv(), cust_rx.recv());
-        };
-        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(3), wait_utterances).await;
+        // Wait for final transcripts to be processed
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let wait_pipelines = async {
             while self.pending_pipelines.load(Ordering::SeqCst) > 0 {
@@ -183,6 +193,34 @@ impl Call {
         let _ = self.operator_session.close().await;
         let _ = self.customer_session.close().await;
     }
+}
+
+fn audio_stats(pcm: &[u8]) -> (f32, f32) {
+    if pcm.len() < 2 {
+        return (0.0, 0.0);
+    }
+
+    let mut sum_squares = 0.0f64;
+    let mut peak = 0.0f32;
+    let mut samples = 0.0f64;
+
+    for chunk in pcm.chunks_exact(2) {
+        let sample = i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32768.0;
+        let abs = sample.abs();
+        if abs > peak {
+            peak = abs;
+        }
+        sum_squares += (sample as f64) * (sample as f64);
+        samples += 1.0;
+    }
+
+    let rms = if samples > 0.0 {
+        (sum_squares / samples).sqrt() as f32
+    } else {
+        0.0
+    };
+
+    (rms, peak)
 }
 
 async fn create_conversation(db: &Surreal<Any>, user_id: &str) -> Result<RecordId, CallError> {
@@ -234,7 +272,6 @@ async fn spawn_asr_handler(
     conversation_id: RecordId,
     role: &'static str,
     ws: WsSender,
-    utterance_tx: mpsc::Sender<()>,
     pipeline_info: Option<PipelineInfo>,
 ) -> Result<SonioxSession, CallError> {
     let (tx, mut rx) = mpsc::unbounded_channel();
@@ -246,9 +283,29 @@ async fn spawn_asr_handler(
     tokio::spawn(async move {
         let mut buffer = UtteranceBuffer {
             content: String::new(),
+            interim: String::new(),
         };
+        let mut event_count: usize = 0;
+        let mut word_count: usize = 0;
+        let mut utterance_count: usize = 0;
 
         while let Some(event) = rx.recv().await {
+            event_count += 1;
+            match &event {
+                TranscriptEvent::Word(_) => word_count += 1,
+                TranscriptEvent::UtteranceEnd => utterance_count += 1,
+            }
+
+            if event_count % 50 == 0 {
+                tracing::debug!(
+                    role = role,
+                    events = event_count,
+                    words = word_count,
+                    utterances = utterance_count,
+                    "transcript events received"
+                );
+            }
+
             let is_utterance_end = matches!(event, TranscriptEvent::UtteranceEnd);
             let pending_content = if is_utterance_end && !buffer.content.trim().is_empty() {
                 Some(buffer.content.clone())
@@ -293,9 +350,6 @@ async fn spawn_asr_handler(
                 });
             }
 
-            if is_utterance_end {
-                let _ = utterance_tx.send(()).await;
-            }
         }
     });
 
@@ -322,6 +376,7 @@ async fn handle_transcript_event(
                     buffer.content.push(' ');
                 }
                 buffer.content.push_str(&word.text);
+                buffer.interim.clear();
 
                 send_message(
                     ws,
@@ -331,11 +386,36 @@ async fn handle_transcript_event(
                     },
                 )
                 .await;
+
+                tracing::debug!(role = role, content = %buffer.content, "interim transcript")
+            } else {
+                if buffer.content.is_empty() {
+                    buffer.interim = word.text.clone();
+                } else {
+                    buffer.interim = format!("{} {}", buffer.content, word.text);
+                }
+
+                send_message(
+                    ws,
+                    ServerMessage::InterimTranscript {
+                        role: role.to_string(),
+                        content: buffer.interim.clone(),
+                    },
+                )
+                .await;
+
+                tracing::debug!(role = role, content = %buffer.interim, "interim transcript")
             }
             Ok(None)
         }
         TranscriptEvent::UtteranceEnd => {
-            if buffer.content.is_empty() {
+            let utterance_text = if buffer.content.is_empty() {
+                buffer.interim.trim().to_string()
+            } else {
+                buffer.content.clone()
+            };
+
+            if utterance_text.is_empty() {
                 return Ok(None);
             }
 
@@ -350,7 +430,7 @@ async fn handle_transcript_event(
                 )
                 .bind(("conversation", conversation_id.clone()))
                 .bind(("role", role.to_string()))
-                .bind(("content", buffer.content.clone()))
+                .bind(("content", utterance_text.clone()))
                 .await
                 .map_err(|e| e.to_string())?;
 
@@ -362,12 +442,15 @@ async fn handle_transcript_event(
                 ServerMessage::Utterance {
                     id: format_record_id(&event_id),
                     role: role.to_string(),
-                    content: buffer.content.clone(),
+                    content: utterance_text.clone(),
                 },
             )
             .await;
 
+            tracing::info!(role = role, content = %utterance_text, "utterance final");
+
             buffer.content.clear();
+            buffer.interim.clear();
             Ok(Some(event_id))
         }
     }
