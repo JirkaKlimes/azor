@@ -39,28 +39,21 @@ pub enum ServerMessage {
         trigger_id: String,
         stage: String,
     },
-    Highlight {
-        id: String,
-        trigger_id: String,
-        document_id: String,
-        start: usize,
-        end: usize,
-        text: String,
-    },
-    Summary {
+    Response {
         id: String,
         trigger_id: String,
         content: String,
+        references: Vec<Reference>,
+        suggestion: Option<String>,
     },
-    Suggestion {
-        id: String,
-        trigger_id: String,
-        content: String,
-    },
-    NoRelevantInfo {
-        id: String,
-        trigger_id: String,
-    },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Reference {
+    pub document_id: String,
+    pub start: usize,
+    pub end: usize,
+    pub text: String,
 }
 
 pub async fn send_message(ws: &WsSender, msg: ServerMessage) {

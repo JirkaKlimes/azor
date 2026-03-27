@@ -178,7 +178,7 @@ impl Call {
                 self.pipeline_done.notified().await;
             }
         };
-        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(10), wait_pipelines).await;
+        let _ = tokio::time::timeout(tokio::time::Duration::from_secs(30), wait_pipelines).await;
 
         let _ = self.operator_session.close().await;
         let _ = self.customer_session.close().await;

@@ -14,109 +14,53 @@ use crate::state::AppState;
 use crate::util::format_record_id;
 
 const SYSTEM_PROMPT: &str = "\
-You are an AI copilot assisting a call center operator in real time. \
-You are given the conversation so far and relevant knowledge base excerpts. \
-Analyze the excerpts and use the provided tools to produce your analysis. \
-You MUST call at least one tool.\n\n\
-Tool usage guidelines:\n\
-- Use `highlight` to quote a specific, directly relevant passage from an excerpt. \
-  Include surrounding context (pre/post) so the passage can be precisely located in the source.\n\
-- Use `summary` to provide a synthesized overview of what the knowledge base says about the topic.\n\
-- Use `suggest` to draft a response the operator can say to the customer.\n\
-- Use `no_answer` if the excerpts do not contain information relevant to the customer's question. \
-  Explain what was missing.\n\n\
-You may call multiple tools in a single response. A typical good response would include \
-one or more highlights, a summary, and a suggestion. Only use `no_answer` when the excerpts \
-truly lack relevant information.";
+You are an AI assistant helping a call center operator in real time.
 
-trait CopilotTool: JsonSchema + Documented + Serialize {
-    const KIND: &'static str;
+CRITICAL RULES FOR REFERENCES:
+- The number of [[ref:N]] markers in your content MUST EXACTLY MATCH the length of your references array
+- If you write [[ref:0]], you MUST have references[0]. If you write [[ref:1]], you MUST have references[1].
+- NEVER use a [[ref:N]] marker without a corresponding entry in your references array
+- Count your refs before responding: if you have 2 references, only use [[ref:0]] and [[ref:1]]
 
-    fn function_builder() -> FunctionBuilder {
-        let name = std::any::type_name::<Self>()
-            .split("::")
-            .last()
-            .unwrap_or("unknown");
-        let schema =
-            serde_json::to_value(schemars::schema_for!(Self)).expect("schema serialization");
-        FunctionBuilder::new(name)
-            .description(Self::DOCS)
-            .json_schema(schema)
-    }
+RESPONSE STYLE:
+- Be CONCISE and DIRECT - answer the specific question asked
+- DO NOT list all variations or options unless specifically asked
+- Focus on the SINGLE most relevant piece of information
+- Keep responses to 1-2 sentences when possible
 
-    fn into_data(self) -> Value;
-}
+SUGGESTED RESPONSE RULES:
+- The suggestion must be a DIRECT QUOTE the operator can say to the customer
+- Write it as if the operator is speaking to the customer
+- BAD: \"You can tell her to apply the discount online\" (meta-description)
+- GOOD: \"The discount can be applied online when purchasing tickets.\" (direct speech)
+- Only add a suggestion if it would genuinely help
+- If your suggestion uses info from the knowledge base, include that reference in your content too
+
+When citing knowledge base content:
+- Use [[ref:N]] where N is the 0-based index into your references array
+- Each reference needs 'text' (exact quote) and 'source_path' (from the excerpt header)";
 
 #[derive(Debug, Deserialize, Serialize, JsonSchema, Documented)]
-#[serde(rename = "highlight")]
-/// Quote a specific, directly relevant passage from a knowledge base excerpt.
-/// Include surrounding context so the passage can be precisely located via search.
-struct Highlight {
-    /// Text immediately before the highlighted passage, for anchoring context
-    pre: String,
-    /// The exact highlighted passage from the excerpt
+#[serde(rename = "respond")]
+/// Respond to the operator with helpful information about the customer's needs.
+/// Use [[ref:N]] markers in the content to reference knowledge base excerpts.
+struct Respond {
+    /// Conversational response with [[ref:N]] placeholders for references.
+    /// Example: "The customer is asking about X [[ref:0]]. Also Y [[ref:1]]."
+    content: String,
+    /// References to knowledge base excerpts. Each becomes a [[ref:N]] box.
+    /// Index N in [[ref:N]] corresponds to the array index here.
+    references: Vec<RespondReference>,
+    /// Optional suggested response for the operator to say to the customer
+    suggestion: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+struct RespondReference {
+    /// The excerpt text to highlight from the knowledge base
     text: String,
-    /// Text immediately after the highlighted passage, for anchoring context
-    post: String,
-    /// The source path of the excerpt
+    /// The source path of the document (e.g., "invoicing/fksp.md")
     source_path: String,
-}
-
-impl CopilotTool for Highlight {
-    const KIND: &'static str = "highlight";
-
-    fn into_data(self) -> Value {
-        serde_json::to_value(self).unwrap()
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema, Documented)]
-#[serde(rename = "summary")]
-/// Provide a synthesized overview of what the knowledge base says about the topic.
-struct Summary {
-    /// The summary text
-    text: String,
-}
-
-impl CopilotTool for Summary {
-    const KIND: &'static str = "summary";
-
-    fn into_data(self) -> Value {
-        serde_json::to_value(self).unwrap()
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema, Documented)]
-#[serde(rename = "suggest")]
-/// Draft a response the operator can say or adapt for the customer.
-struct Suggest {
-    /// The suggested response text
-    text: String,
-}
-
-impl CopilotTool for Suggest {
-    const KIND: &'static str = "suggestion";
-
-    fn into_data(self) -> Value {
-        serde_json::to_value(self).unwrap()
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, JsonSchema, Documented)]
-#[serde(rename = "no_answer")]
-/// Signal that the knowledge base excerpts do not contain information
-/// relevant to the customer's question.
-struct NoAnswer {
-    /// Why the excerpts are not relevant
-    reason: String,
-}
-
-impl CopilotTool for NoAnswer {
-    const KIND: &'static str = "no_relevant_info";
-
-    fn into_data(self) -> Value {
-        serde_json::json!({ "reason": self.reason })
-    }
 }
 
 #[derive(Debug)]
@@ -126,6 +70,7 @@ struct ChunkMatch {
     content: String,
     source_path: Option<String>,
     char_offset: i64,
+    chunk_index: i64,
     score: f64,
 }
 
@@ -189,15 +134,15 @@ pub async fn run_pipeline(
     }
 
     if chunks.is_empty() {
-        create_event(
+        create_response_event(
             state,
             conversation_id,
-            "no_relevant_info",
-            "copilot",
-            "",
-            Some(serde_json::json!({ "reason": "No relevant knowledge base excerpts found." })),
-            Some(trigger_event_id),
-            Some((&ws, &trigger_id)),
+            trigger_event_id,
+            &trigger_id,
+            "I couldn't find any relevant information in the knowledge base for this topic.",
+            Vec::new(),
+            None,
+            &ws,
         )
         .await?;
         return Ok(());
@@ -236,16 +181,16 @@ pub async fn run_pipeline(
         )
         .await?;
     } else if let Some(text) = response.text() {
-        tracing::warn!("LLM returned text instead of tool calls, storing as summary");
-        create_event(
+        tracing::warn!("LLM returned text instead of tool calls, creating response");
+        create_response_event(
             state,
             conversation_id,
-            "summary",
-            "copilot",
+            trigger_event_id,
+            &trigger_id,
             &text,
-            Some(serde_json::json!({ "text": text })),
-            Some(trigger_event_id),
-            Some((&ws, &trigger_id)),
+            Vec::new(),
+            None,
+            &ws,
         )
         .await?;
     }
@@ -279,6 +224,46 @@ async fn fetch_conversation_context(
 }
 
 fn build_llm(state: &AppState) -> Result<Box<dyn llm::LLMProvider>, llm::error::LLMError> {
+    // Build a strict JSON schema for the respond tool
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "Conversational response with [[ref:N]] placeholders for references. Example: 'The customer is asking about X [[ref:0]]. Also Y [[ref:1]].'"
+            },
+            "references": {
+                "type": "array",
+                "description": "References to knowledge base excerpts. Each becomes a [[ref:N]] box. Index N in [[ref:N]] corresponds to the array index here.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": "The excerpt text to highlight from the knowledge base"
+                        },
+                        "source_path": {
+                            "type": "string",
+                            "description": "The source path of the document (e.g., 'invoicing/fksp.md')"
+                        }
+                    },
+                    "required": ["text", "source_path"],
+                    "additionalProperties": false
+                }
+            },
+            "suggestion": {
+                "type": ["string", "null"],
+                "description": "Optional suggested response for the operator to say to the customer"
+            }
+        },
+        "required": ["content", "references"],
+        "additionalProperties": false
+    });
+
+    let respond_fn = FunctionBuilder::new("respond")
+        .description("Respond to the operator with helpful information about the customer's needs. Use [[ref:N]] markers in the content to reference knowledge base excerpts.")
+        .json_schema(schema);
+
     LLMBuilder::new()
         .backend(LLMBackend::OpenRouter)
         .api_key(&state.config.openrouter_api_key)
@@ -287,12 +272,9 @@ fn build_llm(state: &AppState) -> Result<Box<dyn llm::LLMProvider>, llm::error::
         .max_tokens(4096)
         .temperature(0.1)
         .system(SYSTEM_PROMPT)
-        .function(Highlight::function_builder())
-        .function(Summary::function_builder())
-        .function(Suggest::function_builder())
-        .function(NoAnswer::function_builder())
+        .function(respond_fn)
         .tool_choice(ToolChoice::Any)
-        .enable_parallel_tool_use(true)
+        .enable_parallel_tool_use(false)
         .build()
 }
 
@@ -318,29 +300,77 @@ async fn retrieve_chunks(state: &AppState, content: &str) -> Result<Vec<ChunkMat
                 content, \
                 document.source_path AS source_path, \
                 char_offset, \
+                chunk_index, \
                 vector::similarity::cosine(embedding, $emb) AS score \
             FROM chunks \
-            WHERE embedding <|10,40|> $emb \
+            WHERE embedding <|7,40|> $emb \
             ORDER BY score DESC \
-            LIMIT 10",
+            LIMIT 7",
         )
         .bind(("emb", query_embedding))
         .await
         .map_err(|e| e.to_string())?;
 
     let rows: Vec<serde_json::Value> = result.take(0).map_err(|e| e.to_string())?;
-    rows.into_iter()
-        .map(|row| {
-            Ok(ChunkMatch {
-                id: parse_record_id(&row, "id")?,
-                document_id: parse_record_id(&row, "document_id")?,
+    let mut chunks: Vec<ChunkMatch> = rows
+        .into_iter()
+        .filter_map(|row| {
+            Some(ChunkMatch {
+                id: parse_record_id(&row, "id").ok()?,
+                document_id: parse_record_id(&row, "document_id").ok()?,
                 content: row["content"].as_str().unwrap_or_default().to_string(),
                 source_path: row["source_path"].as_str().map(String::from),
                 char_offset: row["char_offset"].as_i64().unwrap_or(0),
+                chunk_index: row["chunk_index"].as_i64().unwrap_or(0),
                 score: row["score"].as_f64().unwrap_or(0.0),
             })
         })
-        .collect()
+        .collect();
+
+    // Fetch neighboring chunks for context
+    for chunk in &mut chunks {
+        if let Ok(context) = fetch_chunk_context(state, &chunk.document_id, chunk.chunk_index).await
+        {
+            chunk.content = context;
+        }
+    }
+
+    Ok(chunks)
+}
+
+async fn fetch_chunk_context(
+    state: &AppState,
+    document_id: &str,
+    chunk_index: i64,
+) -> Result<String, String> {
+    // Fetch the chunk before, current, and after
+    let indices = [chunk_index - 1, chunk_index, chunk_index + 1];
+
+    let mut result = state
+        .db
+        .query(
+            "SELECT content, chunk_index FROM chunks \
+             WHERE document = type::thing($doc) AND chunk_index IN $indices \
+             ORDER BY chunk_index ASC",
+        )
+        .bind(("doc", document_id.to_string()))
+        .bind(("indices", indices.to_vec()))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let rows: Vec<serde_json::Value> = result.take(0).map_err(|e| e.to_string())?;
+
+    let merged: String = rows
+        .iter()
+        .filter_map(|row| row["content"].as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if merged.is_empty() {
+        Err("no chunks found".into())
+    } else {
+        Ok(merged)
+    }
 }
 
 fn parse_record_id(row: &serde_json::Value, field: &str) -> Result<String, String> {
@@ -400,49 +430,15 @@ fn build_prompt(
     prompt
 }
 
-enum ToolAction {
-    Highlight(Highlight),
-    Summary(Summary),
-    Suggest(Suggest),
-    NoAnswer(NoAnswer),
-}
-
-fn parse_tool_calls(calls: &[llm::ToolCall]) -> Result<Vec<ToolAction>, PipelineError> {
-    calls
-        .iter()
-        .filter_map(|tc| {
-            let args = &tc.function.arguments;
-            let parse =
-                |tool: &'static str| move |source| PipelineError::ToolParse { tool, source };
-
-            match tc.function.name.to_lowercase().as_str() {
-                "highlight" => Some(
-                    serde_json::from_str(args)
-                        .map(ToolAction::Highlight)
-                        .map_err(parse("Highlight")),
-                ),
-                "summary" => Some(
-                    serde_json::from_str(args)
-                        .map(ToolAction::Summary)
-                        .map_err(parse("Summary")),
-                ),
-                "suggest" => Some(
-                    serde_json::from_str(args)
-                        .map(ToolAction::Suggest)
-                        .map_err(parse("Suggest")),
-                ),
-                "no_answer" | "noanswer" => Some(
-                    serde_json::from_str(args)
-                        .map(ToolAction::NoAnswer)
-                        .map_err(parse("NoAnswer")),
-                ),
-                other => {
-                    tracing::warn!(tool = other, "LLM called unknown tool");
-                    None
-                }
-            }
-        })
-        .collect()
+fn parse_respond_call(calls: &[llm::ToolCall]) -> Result<Option<Respond>, PipelineError> {
+    for tc in calls {
+        if tc.function.name.to_lowercase() == "respond" {
+            let respond: Respond = serde_json::from_str(&tc.function.arguments)
+                .map_err(|source| PipelineError::ToolParse { tool: "Respond", source })?;
+            return Ok(Some(respond));
+        }
+    }
+    Ok(None)
 }
 
 async fn process_tool_calls(
@@ -454,130 +450,169 @@ async fn process_tool_calls(
     chunks: &[ChunkMatch],
     ws: &WsSender,
 ) -> Result<(), PipelineError> {
-    for action in parse_tool_calls(tool_calls)? {
-        match action {
-            ToolAction::Highlight(h) => {
-                process_highlight(state, conversation_id, trigger_event_id, trigger_id, h, chunks, ws).await?;
-            }
-            ToolAction::Summary(s) => {
-                let text = s.text.clone();
-                create_event(
-                    state,
-                    conversation_id,
-                    Summary::KIND,
-                    "copilot",
-                    &text,
-                    Some(s.into_data()),
-                    Some(trigger_event_id),
-                    Some((ws, trigger_id)),
-                )
-                .await?;
-            }
-            ToolAction::Suggest(s) => {
-                let text = s.text.clone();
-                create_event(
-                    state,
-                    conversation_id,
-                    Suggest::KIND,
-                    "copilot",
-                    &text,
-                    Some(s.into_data()),
-                    Some(trigger_event_id),
-                    Some((ws, trigger_id)),
-                )
-                .await?;
-            }
-            ToolAction::NoAnswer(n) => {
-                let reason = n.reason.clone();
-                create_event(
-                    state,
-                    conversation_id,
-                    NoAnswer::KIND,
-                    "copilot",
-                    &reason,
-                    Some(n.into_data()),
-                    Some(trigger_event_id),
-                    Some((ws, trigger_id)),
-                )
-                .await?;
-            }
-        }
-    }
-    Ok(())
-}
+    let Some(respond) = parse_respond_call(tool_calls)? else {
+        tracing::warn!("LLM did not call respond tool");
+        return Ok(());
+    };
 
-async fn process_highlight(
-    state: &AppState,
-    conversation_id: &RecordId,
-    trigger_event_id: &RecordId,
-    trigger_id: &str,
-    highlight: Highlight,
-    chunks: &[ChunkMatch],
-    ws: &WsSender,
-) -> Result<(), PipelineError> {
-    let Some(chunk) = chunks
+    // Process references to get document positions
+    // IMPORTANT: Always include all references to keep indices aligned with [[ref:N]] markers
+    let references: Vec<_> = respond
+        .references
         .iter()
-        .find(|c| c.source_path.as_deref() == Some(&highlight.source_path))
-    else {
-        tracing::warn!(source_path = %highlight.source_path, "highlight source_path doesn't match any chunk");
-        return Ok(());
-    };
+        .map(|ref_item| {
+            process_reference(&ref_item.text, &ref_item.source_path, chunks)
+                .unwrap_or_else(|| {
+                    // Fallback: include reference without document position
+                    tracing::warn!(
+                        text = %ref_item.text,
+                        source_path = %ref_item.source_path,
+                        "could not find reference in chunks"
+                    );
+                    super::events::Reference {
+                        document_id: String::new(),
+                        start: 0,
+                        end: 0,
+                        text: ref_item.text.clone(),
+                    }
+                })
+        })
+        .collect();
 
-    let Some((rel_start, rel_end)) = fuzzy_find(&chunk.content, &highlight.text) else {
-        tracing::warn!(text = %highlight.text, "highlight text not found in chunk");
-        return Ok(());
-    };
-
-    let doc_start = chunk.char_offset as usize + rel_start;
-    let doc_end = chunk.char_offset as usize + rel_end;
-
-    create_event(
+    // Create the response event
+    create_response_event(
         state,
         conversation_id,
-        Highlight::KIND,
-        "copilot",
-        &highlight.text,
-        Some(serde_json::json!({
-            "document_id": chunk.document_id,
-            "start": doc_start,
-            "end": doc_end,
-            "source_path": chunk.source_path,
-        })),
-        Some(trigger_event_id),
-        Some((ws, trigger_id)),
+        trigger_event_id,
+        trigger_id,
+        &respond.content,
+        references,
+        respond.suggestion.as_deref(),
+        ws,
     )
     .await?;
 
     Ok(())
 }
 
+fn process_reference(
+    text: &str,
+    source_path: &str,
+    chunks: &[ChunkMatch],
+) -> Option<super::events::Reference> {
+    let chunk = chunks
+        .iter()
+        .find(|c| c.source_path.as_deref() == Some(source_path))?;
+
+    // Find position within chunk, fallback to chunk start
+    let (rel_start, rel_end) = fuzzy_find(&chunk.content, text)
+        .unwrap_or((0, text.len().min(chunk.content.len())));
+
+    let doc_start = chunk.char_offset as usize + rel_start;
+    let doc_end = chunk.char_offset as usize + rel_end;
+
+    Some(super::events::Reference {
+        document_id: chunk.document_id.clone(),
+        start: doc_start,
+        end: doc_end,
+        text: text.to_string(),
+    })
+}
+
+async fn create_response_event(
+    state: &AppState,
+    conversation_id: &RecordId,
+    trigger_event_id: &RecordId,
+    trigger_id: &str,
+    content: &str,
+    references: Vec<super::events::Reference>,
+    suggestion: Option<&str>,
+    ws: &WsSender,
+) -> Result<RecordId, surrealdb::Error> {
+    let data = serde_json::json!({
+        "references": references,
+        "suggestion": suggestion,
+    });
+
+    let mut result = state
+        .db
+        .query(
+            "CREATE events SET \
+                conversation = $conversation, \
+                kind = 'response', \
+                role = 'copilot', \
+                content = $content, \
+                data = $data, \
+                trigger_event = $trigger_event \
+            RETURN id",
+        )
+        .bind(("conversation", conversation_id.clone()))
+        .bind(("content", content.to_string()))
+        .bind(("data", data.clone()))
+        .bind(("trigger_event", trigger_event_id.clone()))
+        .await?;
+
+    let id: Option<RecordId> = result.take("id")?;
+    let id = id.ok_or_else(|| surrealdb::Error::thrown("failed to create event".into()))?;
+
+    let id_str = format_record_id(&id);
+    let msg = ServerMessage::Response {
+        id: id_str,
+        trigger_id: trigger_id.to_string(),
+        content: content.to_string(),
+        references,
+        suggestion: suggestion.map(String::from),
+    };
+    send_message(ws, msg).await;
+
+    Ok(id)
+}
+
+
 fn fuzzy_find(content: &str, needle: &str) -> Option<(usize, usize)> {
-    let normalize = |s: &str| s.split_whitespace().collect::<Vec<_>>().join(" ");
-    let normalized_needle = normalize(needle);
+    // Case-insensitive search using lowercase
+    let lower_content = content.to_lowercase();
+    let lower_needle = needle.to_lowercase();
 
-    if let Some(pos) = content.find(&normalized_needle) {
-        return Some((pos, pos + normalized_needle.len()));
+    // 1. Exact substring match
+    if let Some(pos) = lower_content.find(&lower_needle) {
+        return Some((pos, pos + lower_needle.len()));
     }
 
-    if let Some(pos) = content.find(needle) {
-        return Some((pos, pos + needle.len()));
+    // 2. Try first few words (LLM often truncates)
+    let words: Vec<&str> = lower_needle.split_whitespace().collect();
+    if words.len() >= 3 {
+        let prefix: String = words[..3].join(" ");
+        if let Some(start) = lower_content.find(&prefix) {
+            let end = (start + lower_needle.len()).min(content.len());
+            return Some((start, end));
+        }
     }
 
-    let normalized_content = normalize(content);
-    if let Some(norm_pos) = normalized_content.find(&normalized_needle) {
-        let char_count = normalized_content[..norm_pos].chars().count();
-        let start = content
-            .char_indices()
-            .nth(char_count)
-            .map(|(i, _)| i)
-            .unwrap_or(0);
-        let end_char = char_count + normalized_needle.chars().count();
-        let end = content
-            .char_indices()
-            .nth(end_char)
-            .map(|(i, _)| i)
-            .unwrap_or(content.len());
-        return Some((start, end));
+    // 3. Fuzzy: find best matching window using strsim
+    let needle_chars: Vec<char> = lower_needle.chars().collect();
+    let content_chars: Vec<char> = lower_content.chars().collect();
+
+    if needle_chars.len() < 5 || content_chars.len() < needle_chars.len() {
+        return None;
+    }
+
+    let window_len = needle_chars.len();
+    let mut best = (0.0, 0usize);
+
+    for start in 0..=content_chars.len().saturating_sub(window_len) {
+        let window: String = content_chars[start..start + window_len].iter().collect();
+        let score = strsim::normalized_levenshtein(&lower_needle, &window);
+        if score > best.0 {
+            best = (score, start);
+        }
+    }
+
+    if best.0 > 0.6 {
+        // Convert char index to byte index
+        let byte_start: usize = content.chars().take(best.1).map(|c| c.len_utf8()).sum();
+        let byte_end: usize = byte_start + content.chars().skip(best.1).take(window_len).map(|c| c.len_utf8()).sum::<usize>();
+        return Some((byte_start, byte_end));
     }
 
     None
@@ -631,38 +666,6 @@ async fn create_event(
                 .and_then(|d| d["stage"].as_str())
                 .unwrap_or("")
                 .to_string(),
-        }),
-        "highlight" => Some(ServerMessage::Highlight {
-            id: id_str,
-            trigger_id: trigger_id.to_string(),
-            document_id: data
-                .as_ref()
-                .and_then(|d| d["document_id"].as_str())
-                .unwrap_or("")
-                .to_string(),
-            start: data
-                .as_ref()
-                .and_then(|d| d["start"].as_u64())
-                .unwrap_or(0) as usize,
-            end: data
-                .as_ref()
-                .and_then(|d| d["end"].as_u64())
-                .unwrap_or(0) as usize,
-            text: content.to_string(),
-        }),
-        "summary" => Some(ServerMessage::Summary {
-            id: id_str,
-            trigger_id: trigger_id.to_string(),
-            content: content.to_string(),
-        }),
-        "suggestion" => Some(ServerMessage::Suggestion {
-            id: id_str,
-            trigger_id: trigger_id.to_string(),
-            content: content.to_string(),
-        }),
-        "no_relevant_info" => Some(ServerMessage::NoRelevantInfo {
-            id: id_str,
-            trigger_id: trigger_id.to_string(),
         }),
         _ => None,
     };

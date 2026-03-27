@@ -1,4 +1,4 @@
-export type MessageRole = 'operator' | 'customer'
+export type MessageRole = 'operator' | 'customer' | 'copilot'
 
 export interface TranscriptMessage {
     id: string
@@ -15,6 +15,27 @@ export interface TranscriptProcessing {
     stage: 'retrieving' | 'analyzing'
 }
 
+export interface TranscriptResponse {
+    id: string
+    type: 'response'
+    triggerId: string
+    content: string
+    references: Array<{
+        documentId: string
+        start: number
+        end: number
+        text: string
+    }>
+    suggestion: string | null
+}
+
+export type TranscriptItem =
+    | TranscriptMessage
+    | TranscriptProcessing
+    | TranscriptResponse
+
+// Deprecated types - kept for backwards compatibility with document-panel
+/** @deprecated Use TranscriptResponse instead */
 export interface TranscriptHighlight {
     id: string
     type: 'highlight'
@@ -25,33 +46,13 @@ export interface TranscriptHighlight {
     text: string
 }
 
+/** @deprecated Use TranscriptResponse instead */
 export interface TranscriptSummary {
     id: string
     type: 'summary'
     triggerId: string
     text: string
 }
-
-export interface TranscriptSuggestion {
-    id: string
-    type: 'suggestion'
-    triggerId: string
-    text: string
-}
-
-export interface TranscriptNoRelevantInfo {
-    id: string
-    type: 'no_relevant_info'
-    triggerId: string
-}
-
-export type TranscriptItem =
-    | TranscriptMessage
-    | TranscriptProcessing
-    | TranscriptHighlight
-    | TranscriptSummary
-    | TranscriptSuggestion
-    | TranscriptNoRelevantInfo
 
 export interface Document {
     id: string
@@ -96,34 +97,18 @@ export interface ServerProcessingEvent {
     stage: 'retrieving' | 'analyzing'
 }
 
-export interface ServerHighlightEvent {
-    type: 'highlight'
-    id: string
-    trigger_id: string
-    document_id: string
-    start: number
-    end: number
-    text: string
-}
-
-export interface ServerSummaryEvent {
-    type: 'summary'
+export interface ServerResponseEvent {
+    type: 'response'
     id: string
     trigger_id: string
     content: string
-}
-
-export interface ServerSuggestionEvent {
-    type: 'suggestion'
-    id: string
-    trigger_id: string
-    content: string
-}
-
-export interface ServerNoRelevantInfoEvent {
-    type: 'no_relevant_info'
-    id: string
-    trigger_id: string
+    references: Array<{
+        document_id: string
+        start: number
+        end: number
+        text: string
+    }>
+    suggestion: string | null
 }
 
 export type ServerEvent =
@@ -132,10 +117,7 @@ export type ServerEvent =
     | ServerUtteranceEvent
     | ServerMessageEvent
     | ServerProcessingEvent
-    | ServerHighlightEvent
-    | ServerSummaryEvent
-    | ServerSuggestionEvent
-    | ServerNoRelevantInfoEvent
+    | ServerResponseEvent
 
 // =============================================================================
 // WebSocket Client Events
