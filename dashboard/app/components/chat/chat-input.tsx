@@ -1,21 +1,17 @@
 'use client'
 
 import { SendIcon } from 'lucide-react'
-import { useState, useCallback, type KeyboardEvent } from 'react'
+import { useState, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
-import { Textarea } from '@/components/ui/textarea'
-
-interface ChatInputProps {
-    onSend: (content: string) => void
-    disabled?: boolean
-    placeholder?: string
-}
+import { Input } from '@/components/ui/input'
 
 export default function ChatInput({
     onSend,
     disabled = false,
-    placeholder = 'Ask a question...',
-}: ChatInputProps) {
+}: {
+    onSend: (content: string) => void
+    disabled?: boolean
+}) {
     const [value, setValue] = useState('')
 
     const handleSend = useCallback(() => {
@@ -26,35 +22,24 @@ export default function ChatInput({
         }
     }, [value, disabled, onSend])
 
-    const handleKeyDown = useCallback(
-        (e: KeyboardEvent<HTMLTextAreaElement>) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                handleSend()
-            }
-        },
-        [handleSend],
-    )
-
     return (
-        <div className="border-border bg-background flex items-end gap-2 border-t p-4">
-            <Textarea
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={placeholder}
-                disabled={disabled}
-                className="min-h-[44px] max-h-32 resize-none"
-                rows={1}
-            />
-            <Button
-                onClick={handleSend}
-                disabled={disabled || !value.trim()}
-                size="icon"
-                className="shrink-0"
-            >
-                <SendIcon className="h-4 w-4" />
-            </Button>
+        <div className="bg-background flex justify-center p-4 pt-0">
+            <div className="w-md flex items-center gap-2">
+                <Input
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder={'Start typing..'}
+                    disabled={disabled}
+                    className="rounded-2xl px-4"
+                />
+                <Button
+                    onClick={handleSend}
+                    disabled={disabled || !value.trim()}
+                    className="rounded-full"
+                >
+                    <SendIcon className="-translate-x-px translate-y-px" />
+                </Button>
+            </div>
         </div>
     )
 }

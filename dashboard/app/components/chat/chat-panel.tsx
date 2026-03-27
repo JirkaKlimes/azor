@@ -2,7 +2,6 @@
 
 import { Loader2Icon, MessageSquareIcon, TrashIcon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import { Button } from '@/components/ui/button'
 import type { Document } from '../transcript/types'
 import AIMessage from './ai-message'
 import ChatInput from './chat-input'
@@ -24,7 +23,6 @@ export default function ChatPanel({
     onLoadDocument,
     onSendMessage,
     callEnded = false,
-    onClear,
 }: ChatPanelProps) {
     const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -40,13 +38,9 @@ export default function ChatPanel({
     return (
         <div className="flex h-full flex-col">
             {/* Message list */}
-            <div
-                ref={scrollRef}
-                className="flex-1 overflow-y-auto p-4"
-            >
+            <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
                 {isEmpty ? (
                     <div className="text-muted-foreground flex h-full flex-col items-center justify-center gap-2">
-                        <MessageSquareIcon className="h-8 w-8 opacity-50" />
                         <p className="text-sm">
                             AI assistance will appear here during the call
                         </p>
@@ -89,28 +83,7 @@ export default function ChatPanel({
                 )}
             </div>
 
-            {/* Clear button when call ended and has items */}
-            {callEnded && !isEmpty && onClear && (
-                <div className="border-border flex justify-center border-t p-2">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={onClear}
-                        className="text-muted-foreground"
-                    >
-                        <TrashIcon className="mr-1.5 h-3.5 w-3.5" />
-                        Clear
-                    </Button>
-                </div>
-            )}
-
-            {/* Input area - only show when call is active */}
-            {!callEnded && (
-                <ChatInput
-                    onSend={onSendMessage}
-                    disabled={false}
-                />
-            )}
+            <ChatInput onSend={onSendMessage} disabled={callEnded} />
         </div>
     )
 }
