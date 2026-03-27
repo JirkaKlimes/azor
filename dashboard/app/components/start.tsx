@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { MicIcon, SquareIcon } from 'lucide-react'
+import { MicIcon, PhoneIcon, PhoneOffIcon, SquareIcon } from 'lucide-react'
 import React, { useEffect } from 'react'
 import type { ServerEvent, ClientEvent } from './transcript/types'
 import { useAppContext } from '../context/app'
@@ -11,6 +11,7 @@ export default function Start() {
         handleConversationId,
         handleCallEnd,
         handleEvent,
+        clearSession,
         registerSendMessageHandler,
     } = useAppContext()
     const LOG_PREFIX = '[call-recorder]'
@@ -44,6 +45,8 @@ export default function Start() {
     // Used by Navbar as a small websocket bridge for outgoing text messages.
     const [recording, setRecording] = React.useState(false)
     const [starting, setStarting] = React.useState(false)
+    const [listening, setListening] = React.useState(false)
+    const [listenStarting, setListenStarting] = React.useState(false)
     const [elapsedMs, setElapsedMs] = React.useState(0)
     const wsRef = React.useRef<WebSocket | null>(null)
     const audioContextRef = React.useRef<AudioContext | null>(null)
@@ -57,8 +60,6 @@ export default function Start() {
     const screenInputGainRef = React.useRef<GainNode | null>(null)
     const micSinkRef = React.useRef<GainNode | null>(null)
     const screenSinkRef = React.useRef<GainNode | null>(null)
-    const micAnalyserRef = React.useRef<AnalyserNode | null>(null)
-    const micMeterTimerRef = React.useRef<number | null>(null)
     const timerRef = React.useRef<number | null>(null)
     const startTimeRef = React.useRef<number | null>(null)
     const statusTimerRef = React.useRef<number | null>(null)
@@ -68,8 +69,9 @@ export default function Start() {
     const eventCountsRef = React.useRef<Record<string, number>>({})
     const lastEventRef = React.useRef<string | null>(null)
     const droppedFrameCountRef = React.useRef(0)
+    const listeningRef = React.useRef(false)
+    const callFinalizedRef = React.useRef(false)
     const MAX_BUFFERED_BYTES = 4 * 1024 * 1024
-    const [micLevel, setMicLevel] = React.useState(0)
 
     useEffect(() => {
         registerSendMessageHandler((event: ClientEvent) => {
@@ -92,7 +94,6 @@ export default function Start() {
         screenInputGainRef.current?.disconnect()
         micSinkRef.current?.disconnect()
         screenSinkRef.current?.disconnect()
-        micAnalyserRef.current?.disconnect()
         micSourceRef.current?.disconnect()
         screenSourceRef.current?.disconnect()
 
@@ -102,7 +103,6 @@ export default function Start() {
         screenInputGainRef.current = null
         micSinkRef.current = null
         screenSinkRef.current = null
-        micAnalyserRef.current = null
         micSourceRef.current = null
         screenSourceRef.current = null
 
@@ -166,11 +166,22 @@ export default function Start() {
         return { source, inputGain, worklet, sink }
     }
 
-    const startCall = async () => {
-        if (recording || starting) return
+    const finalizeCall = async (keepMedia: boolean) => {
+        if (callFinalizedRef.current) return
+        callFinalizedRef.current = true
+        setRecording(false)
+        setStarting(false)
+        handleCallEnd()
+        clearSession()
+        if (!keepMedia) {
+            await cleanupMedia()
+        }
+    }
 
-        setStarting(true)
-        log('startCall: requested')
+    const startListening = async () => {
+        if (listening || listenStarting) return
+        setListenStarting(true)
+        log('startListening: requested')
 
         try {
             const micStream = await navigator.mediaDevices.getUserMedia({
@@ -190,7 +201,7 @@ export default function Start() {
                 throw new Error('No screen audio track available')
             }
 
-            log('media streams ready', {
+            log('listening streams ready', {
                 micTracks: micStream.getAudioTracks().length,
                 screenAudioTracks: screenStream.getAudioTracks().length,
                 screenVideoTracks: screenStream.getVideoTracks().length,
@@ -199,8 +210,86 @@ export default function Start() {
             micStreamRef.current = micStream
             screenStreamRef.current = screenStream
 
+            const context = new AudioContext({ sampleRate: 44100 })
+            audioContextRef.current = context
+            await context.resume()
+
+            micFrameCountRef.current = 0
+            screenFrameCountRef.current = 0
+
+            const micNodes = await attachStream(context, micStream, 0)
+            const screenNodes = await attachStream(context, screenStream, 1)
+
+            micSourceRef.current = micNodes.source
+            micInputGainRef.current = micNodes.inputGain
+            micWorkletRef.current = micNodes.worklet
+            micSinkRef.current = micNodes.sink
+            screenSourceRef.current = screenNodes.source
+            screenInputGainRef.current = screenNodes.inputGain
+            screenWorkletRef.current = screenNodes.worklet
+            screenSinkRef.current = screenNodes.sink
+
+            screenStream.getTracks().forEach((track) => {
+                track.onended = () => {
+                    logWarn('screen track ended')
+                    void stopListening()
+                }
+            })
+
+            micStream.getAudioTracks().forEach((track) => {
+                track.onended = () => {
+                    logWarn('mic track ended')
+                    void stopListening()
+                }
+                track.onmute = () => {
+                    logWarn('mic track muted')
+                    void stopListening()
+                }
+            })
+
+            screenStream.getAudioTracks().forEach((track) => {
+                track.onmute = () => {
+                    logWarn('screen audio track muted')
+                    void stopListening()
+                }
+            })
+
+            setListening(true)
+            listeningRef.current = true
+        } catch (error) {
+            logError('Failed to start listening', error)
+            await cleanupMedia()
+            setListening(false)
+            listeningRef.current = false
+        } finally {
+            setListenStarting(false)
+        }
+    }
+
+    const stopListening = async () => {
+        log('stopListening: requested')
+        await stopCall(true)
+        setListening(false)
+        listeningRef.current = false
+        await cleanupMedia()
+    }
+
+    const startCall = async () => {
+        if (recording || starting || !listening) return
+
+        setStarting(true)
+        log('startCall: requested')
+
+        try {
+            const micStream = micStreamRef.current
+            const screenStream = screenStreamRef.current
+            if (!micStream || !screenStream || !audioContextRef.current) {
+                throw new Error('Listening is not ready')
+            }
+
             const ws = new WebSocket('ws://localhost:7600/api/call')
             wsRef.current = ws
+            callFinalizedRef.current = false
 
             ws.onmessage = (event) => {
                 if (typeof event.data === 'string') {
@@ -221,70 +310,7 @@ export default function Start() {
 
             ws.onopen = async () => {
                 log('ws open')
-                const context = new AudioContext({ sampleRate: 44100 })
-                audioContextRef.current = context
-                await context.resume()
-
-                micFrameCountRef.current = 0
-                screenFrameCountRef.current = 0
-
-                const micNodes = await attachStream(context, micStream, 0)
-                const screenNodes = await attachStream(context, screenStream, 1)
-
-                const micAnalyser = context.createAnalyser()
-                micAnalyser.fftSize = 2048
-                micAnalyserRef.current = micAnalyser
-                micNodes.source.connect(micAnalyser)
-
-                micSourceRef.current = micNodes.source
-                micInputGainRef.current = micNodes.inputGain
-                micWorkletRef.current = micNodes.worklet
-                micSinkRef.current = micNodes.sink
-                screenSourceRef.current = screenNodes.source
-                screenInputGainRef.current = screenNodes.inputGain
-                screenWorkletRef.current = screenNodes.worklet
-                screenSinkRef.current = screenNodes.sink
-
-                if (micMeterTimerRef.current) {
-                    window.clearInterval(micMeterTimerRef.current)
-                }
-                micMeterTimerRef.current = window.setInterval(() => {
-                    const analyser = micAnalyserRef.current
-                    if (!analyser) return
-                    const buffer = new Float32Array(analyser.fftSize)
-                    analyser.getFloatTimeDomainData(buffer)
-                    let sum = 0
-                    for (const value of buffer) {
-                        sum += value * value
-                    }
-                    const rms = Math.sqrt(sum / buffer.length)
-                    setMicLevel(rms)
-                }, 200)
-
-                screenStream.getTracks().forEach((track) => {
-                    track.onended = () => {
-                        logWarn('screen track ended')
-                        void stopCall()
-                    }
-                })
-
-                micStream.getAudioTracks().forEach((track) => {
-                    track.onended = () => {
-                        logWarn('mic track ended')
-                        void stopCall()
-                    }
-                    track.onmute = () => {
-                        logWarn('mic track muted')
-                        void stopCall()
-                    }
-                })
-
-                screenStream.getAudioTracks().forEach((track) => {
-                    track.onmute = () => {
-                        logWarn('screen audio track muted')
-                        void stopCall()
-                    }
-                })
+                await audioContextRef.current?.resume()
 
                 setRecording(true)
                 setStarting(false)
@@ -292,9 +318,7 @@ export default function Start() {
 
             ws.onerror = async (event) => {
                 logError('ws error', event)
-                await cleanupMedia()
-                setStarting(false)
-                setRecording(false)
+                await finalizeCall(listeningRef.current)
             }
 
             ws.onclose = async (event) => {
@@ -304,26 +328,19 @@ export default function Start() {
                     wasClean: event.wasClean,
                 })
                 wsRef.current = null
-                await cleanupMedia()
-                setRecording(false)
-                setStarting(false)
-                handleCallEnd()
+                await finalizeCall(listeningRef.current)
             }
         } catch (error) {
             logError('Failed to start call', error)
-            await cleanupMedia()
-            setStarting(false)
-            setRecording(false)
+            await finalizeCall(listeningRef.current)
         }
     }
 
-    const stopCall = async () => {
+    const stopCall = async (keepMedia: boolean) => {
         log('stopCall: requested')
         wsRef.current?.close()
         wsRef.current = null
-        await cleanupMedia()
-        setRecording(false)
-        setStarting(false)
+        await finalizeCall(keepMedia)
     }
 
     React.useEffect(() => {
@@ -383,11 +400,6 @@ export default function Start() {
                 })
             }, 10000)
         } else {
-            if (micMeterTimerRef.current) {
-                window.clearInterval(micMeterTimerRef.current)
-                micMeterTimerRef.current = null
-            }
-            setMicLevel(0)
             if (timerRef.current) {
                 window.clearInterval(timerRef.current)
                 timerRef.current = null
@@ -406,10 +418,6 @@ export default function Start() {
         }
 
         return () => {
-            if (micMeterTimerRef.current) {
-                window.clearInterval(micMeterTimerRef.current)
-                micMeterTimerRef.current = null
-            }
             if (timerRef.current) {
                 window.clearInterval(timerRef.current)
                 timerRef.current = null
@@ -427,8 +435,12 @@ export default function Start() {
 
     React.useEffect(() => {
         return () => {
-            void stopCall()
+            void stopListening()
         }
+    }, [])
+
+    React.useEffect(() => {
+        void startListening()
     }, [])
 
     const formatDuration = (ms: number) => {
@@ -440,30 +452,36 @@ export default function Start() {
             .padStart(2, '0')}`
     }
 
-    const micLevelPercent = Math.min(100, Math.round(micLevel * 300))
-
     return (
         <div className="flex items-center gap-3 text-sm">
+            <div className="text-muted-foreground flex items-center gap-2 text-xs">
+                <span
+                    className={`mx-px h-2.5 w-2.5 rounded-full ${
+                        listening
+                            ? 'box-loading-border bg-emerald-500 text-emerald-500'
+                            : 'bg-destructive'
+                    }`}
+                />
+                Microphone & Audio
+            </div>
             {recording ? (
                 <>
                     <span className="text-muted-foreground font-mono text-xs">
                         {formatDuration(elapsedMs)}
                     </span>
-                    <div className="bg-muted flex h-2 w-20 overflow-hidden rounded-full">
-                        <div
-                            className="bg-foreground h-full transition-[width]"
-                            style={{ width: `${micLevelPercent}%` }}
-                        />
-                    </div>
-                    <Button variant="destructive" onClick={() => void stopCall()}>
-                        <SquareIcon className="h-4 w-4" />
-                        Stop Call
+                    <Button variant="destructive" onClick={() => void stopCall(true)}>
+                        <PhoneOffIcon className="h-4 w-4" />
+                        Stop Session
                     </Button>
                 </>
             ) : (
-                <Button variant="outline" onClick={startCall} disabled={starting}>
-                    <MicIcon className="h-4 w-4" />
-                    {starting ? 'Starting...' : 'Start Call'}
+                <Button
+                    variant="outline"
+                    onClick={startCall}
+                    disabled={!listening || starting}
+                >
+                    <PhoneIcon className="h-4 w-4" />
+                    {starting ? 'Starting...' : 'Start Session'}
                 </Button>
             )}
         </div>
