@@ -8,6 +8,7 @@ import { useAppContext } from '../../context/app'
 
 export default function ChatInput({ disabled }: { disabled?: boolean }) {
     const { sendMessage } = useAppContext()
+
     const [value, setValue] = useState('')
     const isDisabled = disabled ?? false
 
@@ -20,14 +21,20 @@ export default function ChatInput({ disabled }: { disabled?: boolean }) {
     }, [value, isDisabled, sendMessage])
 
     return (
-        <div className="bg-background flex justify-center p-4 pt-0">
-            <div className="w-md flex items-center gap-2">
+        <div className="absolute bottom-4 self-center">
+            <div className="w-md bg-background flex items-center gap-2 rounded-full border p-1">
                 <Input
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleSend()
+                        }
+                    }}
                     placeholder={'Start typing..'}
                     disabled={isDisabled}
-                    className="rounded-2xl px-4"
+                    className="bg-background dark:bg-background rounded-2xl border-0 px-3 shadow-none outline-0"
                 />
                 <Button
                     onClick={handleSend}
