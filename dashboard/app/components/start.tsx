@@ -2,23 +2,17 @@
 
 import { Button } from '@/components/ui/button'
 import { MicIcon, SquareIcon } from 'lucide-react'
-import React, { useImperativeHandle, forwardRef } from 'react'
+import React, { useEffect } from 'react'
 import type { ServerEvent, ClientEvent } from './transcript/types'
+import { useAppContext } from '../context/app'
 
-interface StartProps {
-    onConversationId?: (id: string) => void
-    onCallEnd?: () => void
-    onEvent?: (event: ServerEvent) => void
-}
-
-export interface StartRef {
-    sendMessage: (event: ClientEvent) => void
-}
-
-const Start = forwardRef<StartRef, StartProps>(function Start(
-    { onConversationId, onCallEnd, onEvent },
-    ref,
-) {
+export default function Start() {
+    const {
+        handleConversationId,
+        handleCallEnd,
+        handleEvent,
+        registerSendMessageHandler,
+    } = useAppContext()
     const LOG_PREFIX = '[call-recorder]'
     const INPUT_GAIN = 6
     const toLogString = (value: unknown) => {
@@ -77,14 +71,18 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
     const MAX_BUFFERED_BYTES = 4 * 1024 * 1024
     const [micLevel, setMicLevel] = React.useState(0)
 
-    useImperativeHandle(ref, () => ({
-        sendMessage: (event: ClientEvent) => {
+    useEffect(() => {
+        registerSendMessageHandler((event: ClientEvent) => {
             const ws = wsRef.current
             if (ws?.readyState === WebSocket.OPEN) {
                 ws.send(JSON.stringify(event))
             }
-        },
-    }))
+        })
+
+        return () => {
+            registerSendMessageHandler(null)
+        }
+    }, [registerSendMessageHandler])
 
     const cleanupMedia = async () => {
         log('cleanupMedia: begin')
@@ -211,9 +209,9 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
                         eventCountsRef.current[msg.type] =
                             (eventCountsRef.current[msg.type] ?? 0) + 1
                         lastEventRef.current = msg.type
-                        onEvent?.(msg)
+                        handleEvent(msg)
                         if (msg.type === 'connected') {
-                            onConversationId?.(msg.conversation_id)
+                            handleConversationId(msg.conversation_id)
                         }
                     } catch {
                         // Ignore non-JSON messages
@@ -309,7 +307,7 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
                 await cleanupMedia()
                 setRecording(false)
                 setStarting(false)
-                onCallEnd?.()
+                handleCallEnd()
             }
         } catch (error) {
             logError('Failed to start call', error)
@@ -470,6 +468,4 @@ const Start = forwardRef<StartRef, StartProps>(function Start(
             )}
         </div>
     )
-})
-
-export default Start
+}

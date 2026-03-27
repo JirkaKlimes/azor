@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import { ThemeProvider } from './context/theme'
 import { Toaster } from '@/components/ui/sonner'
+import { AppProvider } from './context/app'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
 
@@ -30,8 +31,10 @@ export default function RootLayout({
                     enableSystem
                     disableTransitionOnChange
                 >
-                    {children}
-                    <Toaster />
+                    <AppProvider>
+                        {children}
+                        <Toaster />
+                    </AppProvider>
                 </ThemeProvider>
             </body>
         </html>

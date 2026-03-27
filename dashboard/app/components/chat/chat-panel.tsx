@@ -1,29 +1,14 @@
 'use client'
 
-import { Loader2Icon, MessageSquareIcon, TrashIcon } from 'lucide-react'
+import { Loader2Icon } from 'lucide-react'
 import { useEffect, useRef } from 'react'
-import type { Document } from '../transcript/types'
 import AIMessage from './ai-message'
 import ChatInput from './chat-input'
 import OperatorQuestionBubble from './operator-question'
-import type { ChatItem } from './types'
+import { useAppContext } from '../../context/app'
 
-interface ChatPanelProps {
-    items: ChatItem[]
-    documents: Map<string, Document>
-    onLoadDocument: (documentId: string) => void
-    onSendMessage: (content: string) => void
-    callEnded?: boolean
-    onClear?: () => void
-}
-
-export default function ChatPanel({
-    items,
-    documents,
-    onLoadDocument,
-    onSendMessage,
-    callEnded = false,
-}: ChatPanelProps) {
+export default function ChatPanel() {
+    const { chatItems, documents, loadDocument, callEnded } = useAppContext()
     const scrollRef = useRef<HTMLDivElement>(null)
 
     // Auto-scroll to bottom when new items are added
@@ -31,9 +16,9 @@ export default function ChatPanel({
         if (scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight
         }
-    }, [items])
+    }, [chatItems])
 
-    const isEmpty = items.length === 0
+    const isEmpty = chatItems.length === 0
 
     return (
         <div className="flex h-full flex-col">
@@ -47,14 +32,14 @@ export default function ChatPanel({
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {items.map((item, index) => {
+                        {chatItems.map((item, index) => {
                             if (item.type === 'response') {
                                 return (
                                     <AIMessage
                                         key={item.data.id}
                                         response={item.data}
                                         documents={documents}
-                                        onLoadDocument={onLoadDocument}
+                                        onLoadDocument={loadDocument}
                                     />
                                 )
                             }
@@ -83,7 +68,7 @@ export default function ChatPanel({
                 )}
             </div>
 
-            <ChatInput onSend={onSendMessage} disabled={callEnded} />
+            <ChatInput disabled={callEnded} />
         </div>
     )
 }

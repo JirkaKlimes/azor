@@ -4,20 +4,12 @@
 import { useEffect, useRef, useState } from 'react'
 import type { TranscriptMessage, ServerEvent } from './types'
 import MessageBubble from './message-bubble'
+import { useAppContext } from '../../context/app'
 
-export default function TranscriptPanel({
-    conversationId,
-    serverEvent,
-    serverEventSeq = 0,
-    onTranscriptUpdate,
-}: {
-    conversationId: string | null
-    callEnded?: boolean
-    serverEvent?: ServerEvent | null
-    serverEventSeq?: number
-    onClear?: () => void
-    onTranscriptUpdate?: (items: TranscriptMessage[]) => void
-}) {
+export default function TranscriptPanel() {
+    const { conversationId, latestEvent, latestEventSeq } = useAppContext()
+    const serverEvent: ServerEvent | null = latestEvent?.event ?? null
+    const serverEventSeq = latestEventSeq
     // Used by app/page.tsx as the main chat timeline.
     const [messages, setMessages] = useState<TranscriptMessage[]>([])
     const [interimOperator, setInterimOperator] = useState('')
@@ -35,10 +27,6 @@ export default function TranscriptPanel({
             })
         }
     }, [messages, interimOperator, interimCustomer])
-
-    useEffect(() => {
-        onTranscriptUpdate?.(messages)
-    }, [messages, onTranscriptUpdate])
 
     useEffect(() => {
         if (conversationId && prevConversationIdRef.current !== conversationId) {
