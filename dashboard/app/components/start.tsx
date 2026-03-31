@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from '@/components/ui/button'
-import { MicIcon, PhoneIcon, PhoneOffIcon, SquareIcon } from 'lucide-react'
+import { MicIcon, MicOffIcon, PhoneIcon, PhoneOffIcon } from 'lucide-react'
 import React, { useEffect } from 'react'
 import type { ServerEvent, ClientEvent } from './transcript/types'
 import { useAppContext } from '../context/app'
@@ -48,6 +48,7 @@ export default function Start() {
     const [listening, setListening] = React.useState(false)
     const [listenStarting, setListenStarting] = React.useState(false)
     const [elapsedMs, setElapsedMs] = React.useState(0)
+    const [micMuted, setMicMuted] = React.useState(false)
     const wsRef = React.useRef<WebSocket | null>(null)
     const audioContextRef = React.useRef<AudioContext | null>(null)
     const micStreamRef = React.useRef<MediaStream | null>(null)
@@ -256,6 +257,7 @@ export default function Start() {
 
             setListening(true)
             listeningRef.current = true
+            setMicMuted(false)
         } catch (error) {
             logError('Failed to start listening', error)
             await cleanupMedia()
@@ -341,6 +343,17 @@ export default function Start() {
         wsRef.current?.close()
         wsRef.current = null
         await finalizeCall(keepMedia)
+    }
+
+    const toggleMicMute = () => {
+        const micStream = micStreamRef.current
+        if (!micStream) return
+        const newMuted = !micMuted
+        micStream.getAudioTracks().forEach((track) => {
+            track.enabled = !newMuted
+        })
+        setMicMuted(newMuted)
+        log(newMuted ? 'mic muted by user' : 'mic unmuted by user')
     }
 
     React.useEffect(() => {
@@ -464,6 +477,20 @@ export default function Start() {
                 />
                 Microphone & Audio
             </div>
+            {listening && (
+                <Button
+                    variant={micMuted ? 'destructive' : 'outline'}
+                    size="icon"
+                    onClick={toggleMicMute}
+                    title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                >
+                    {micMuted ? (
+                        <MicOffIcon className="h-4 w-4" />
+                    ) : (
+                        <MicIcon className="h-4 w-4" />
+                    )}
+                </Button>
+            )}
             {recording ? (
                 <>
                     <span className="text-muted-foreground font-mono text-xs">
