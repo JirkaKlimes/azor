@@ -477,20 +477,6 @@ export default function Start() {
                 />
                 Microphone & Audio
             </div>
-            {listening && (
-                <Button
-                    variant={micMuted ? 'destructive' : 'outline'}
-                    size="icon"
-                    onClick={toggleMicMute}
-                    title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
-                >
-                    {micMuted ? (
-                        <MicOffIcon className="h-4 w-4" />
-                    ) : (
-                        <MicIcon className="h-4 w-4" />
-                    )}
-                </Button>
-            )}
             {recording ? (
                 <>
                     <span className="text-muted-foreground font-mono text-xs">
@@ -509,6 +495,20 @@ export default function Start() {
                 >
                     <PhoneIcon className="h-4 w-4" />
                     {starting ? 'Starting...' : 'Start Session'}
+                </Button>
+            )}
+            {listening && (
+                <Button
+                    variant={micMuted ? 'destructive' : 'outline'}
+                    size="icon"
+                    onClick={toggleMicMute}
+                    title={micMuted ? 'Unmute microphone' : 'Mute microphone'}
+                >
+                    {micMuted ? (
+                        <MicOffIcon className="h-4 w-4" />
+                    ) : (
+                        <MicIcon className="h-4 w-4" />
+                    )}
                 </Button>
             )}
         </div>
