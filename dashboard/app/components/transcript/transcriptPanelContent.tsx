@@ -1,4 +1,5 @@
 'use client'
+import { useEffect, useRef } from 'react'
 import CustomerMessage from '../customerMessage'
 import OperatorMessage from '../operatorMessage'
 import type { TranscriptMessage } from './types'
@@ -7,6 +8,12 @@ import { EmptyTranscriptChat } from './emptyTranscriptChat'
 
 export default function TranscriptPanelContent() {
     const { transcriptMessages } = useAppContext()
+    const bottomRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }, [transcriptMessages])
+
     if (transcriptMessages.length === 0) {
         return <EmptyTranscriptChat />
     }
@@ -17,6 +24,7 @@ export default function TranscriptPanelContent() {
                 {transcriptMessages.map((message) => (
                     <TranscriptMessageMapper key={message.id} message={message} />
                 ))}
+                <div ref={bottomRef} />
             </div>
         </div>
     )
